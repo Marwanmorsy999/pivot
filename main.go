@@ -1,0 +1,186 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"pivot/internal/config"
+	"pivot/internal/core"
+	"pivot/internal/planner"
+	"pivot/internal/state"
+	"pivot/internal/tui"
+
+	"github.com/spf13/cobra"
+)
+
+func main() {
+	rootCmd := &cobra.Command{
+		Use:   "pivot",
+		Short: "Universal Hybrid CLI Orchestrator (AI + Tools)",
+		Long:  "Orchestrate AI agents and CLI tools together in a single workflow with TUI, cost tracking, and worktree isolation.",
+	}
+
+	initCmd := &cobra.Command{
+		Use:   "init",
+		Short: "Initialize pivot (config, state DB, discover tools)",
+		Run: func(cmd *cobra.Command, args []string) {
+			config.SaveDefault()
+			s, _ := state.New()
+			defer s.Close()
+			fmt.Println("✅ Initialized ~/.pivot/config.yaml")
+			fmt.Println("✅ Initialized ~/.pivot/state.db")
+			fmt.Println("🔧 Run 'pivot run \"your goal\"' to start orchestrating.")
+		},
+	}
+
+	runCmd := &cobra.Command{
+		Use:   "run [goal]",
+		Short: "Execute a goal with hybrid orchestration (AI + CLI tools)",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			goal := args[0]
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			sigCh := make(chan os.Signal, 1)
+			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+			go func() {
+				<-sigCh
+				cancel()
+			}()
+
+			cfg, _ := config.Load()
+			s, _ := state.New()
+			defer s.Close()
+
+			sessionID, _ := s.CreateSession(goal)
+			fmt.Printf("📝 Session: %s\n", sessionID)
+
+			var p planner.Planner
+			switch cfg.Planner.Provider {
+			case "openai", "groq", "gemini", "anthropic":
+				endpoint := cfg.Planner.Endpoint
+				if endpoint == "" {
+					if cfg.Planner.Provider == "groq" {
+						endpoint = "https://api.groq.com/openai/v1/chat/completions"
+					} else if cfg.Planner.Provider == "gemini" {
+						endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+					} else {
+						endpoint = "https://api.openai.com/v1/chat/completions"
+					}
+				}
+				p = &planner.OpenAPlanner{
+					APIKey:   cfg.Planner.APIKey,
+					Model:    cfg.Planner.Model,
+					Endpoint: endpoint,
+				}
+			default:
+				p = &planner.OllamaPlanner{
+					Endpoint: cfg.Planner.Endpoint,
+					Model:    cfg.Planner.Model,
+				}
+			}
+
+			fmt.Println("🧠 Planning...")
+			tasks, err := p.Plan(goal)
+			if err != nil {
+				fmt.Printf("❌ Planning failed: %v\n", err)
+				return
+			}
+			if len(tasks) == 0 {
+				fmt.Println("❌ No tasks generated.")
+				return
+			}
+
+			eventCh := make(chan core.Event, 100)
+			go func() {
+				orchestrator := core.NewOrchestrator(tasks, sessionID, s, eventCh)
+				err := orchestrator.Run(ctx)
+				if err != nil && err != context.Canceled {
+					eventCh <- core.Event{Type: core.EventError, Message: err.Error()}
+				}
+				close(eventCh)
+			}()
+
+			tuiModel := tui.NewModel(sessionID, goal, tasks, eventCh)
+			if err := tuiModel.Run(); err != nil {
+				fmt.Printf("❌ TUI error: %v\n", err)
+			}
+		},
+	}
+
+	resumeCmd := &cobra.Command{
+		Use:   "resume [session-id]",
+		Short: "Resume a failed or paused session",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			sessionID := args[0]
+			s, _ := state.New()
+			defer s.Close()
+
+			failed, _ := s.GetFailedTasks(sessionID)
+			if len(failed) == 0 {
+				fmt.Println("✅ No failed tasks to resume.")
+				return
+			}
+
+			fmt.Printf("🔄 Resuming session %s (%d failed tasks)\n", sessionID, len(failed))
+			goal, _ := s.GetGoal(sessionID)
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			cfg, _ := config.Load()
+			var p planner.Planner
+			if cfg.Planner.Provider == "ollama" {
+				p = &planner.OllamaPlanner{Endpoint: cfg.Planner.Endpoint, Model: cfg.Planner.Model}
+			} else {
+				p = &planner.OpenAPlanner{APIKey: cfg.Planner.APIKey, Model: cfg.Planner.Model, Endpoint: cfg.Planner.Endpoint}
+			}
+
+			tasks, _ := p.Plan(goal)
+			eventCh := make(chan core.Event, 100)
+			go func() {
+				orchestrator := core.NewOrchestrator(tasks, sessionID, s, eventCh)
+				err := orchestrator.Run(ctx)
+				if err != nil {
+					eventCh <- core.Event{Type: core.EventError, Message: err.Error()}
+				}
+				close(eventCh)
+			}()
+
+			tuiModel := tui.NewModel(sessionID, goal, tasks, eventCh)
+			tuiModel.Run()
+		},
+	}
+
+	statusCmd := &cobra.Command{
+		Use:   "status",
+		Short: "Show recent sessions",
+		Run: func(cmd *cobra.Command, args []string) {
+			s, _ := state.New()
+			defer s.Close()
+			sessions, _ := s.GetSessions()
+			if len(sessions) == 0 {
+				fmt.Println("No sessions found.")
+				return
+			}
+			fmt.Println("📂 Recent Sessions:")
+			for _, id := range sessions {
+				goal, _ := s.GetGoal(id)
+				fmt.Printf("  - %s: %s\n", id, goal)
+			}
+		},
+	}
+
+	rootCmd.AddCommand(initCmd, runCmd, resumeCmd, statusCmd)
+
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+}

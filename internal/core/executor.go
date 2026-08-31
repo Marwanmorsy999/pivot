@@ -1,0 +1,124 @@
+package core
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+	"time"
+
+	"pivot/internal/cost"
+	"pivot/internal/state"
+	"pivot/internal/worktree"
+)
+
+type Executor struct {
+	State     *state.State
+	SessionID string
+	Outputs   map[string]string
+	Cost      float64
+	Tokens    int
+}
+
+func NewExecutor(sessionID string, s *state.State) *Executor {
+	return &Executor{
+		State:     s,
+		SessionID: sessionID,
+		Outputs:   make(map[string]string),
+	}
+}
+
+func (e *Executor) Execute(ctx <-chan struct{}, task *Task, eventCh chan Event) error {
+	args := make([]string, len(task.Args))
+	for i, arg := range task.Args {
+		if strings.Contains(arg, "$OUTPUT") {
+			if len(task.DependsOn) == 0 {
+				return fmt.Errorf("task %s uses $OUTPUT but has no dependencies", task.ID)
+			}
+			dep := task.DependsOn[0]
+			if out, ok := e.Outputs[dep]; ok {
+				args[i] = strings.ReplaceAll(arg, "$OUTPUT", out)
+			} else {
+				return fmt.Errorf("dependency %s output not found", dep)
+			}
+		} else {
+			args[i] = arg
+		}
+	}
+
+	task.Status = "running"
+	task.StartTime = time.Now().UnixMilli()
+	eventCh <- Event{Type: EventTaskUpdate, TaskID: task.ID, Status: "running"}
+
+	var err error
+	var output []byte
+
+	if task.Type == "tool" {
+		cmd := exec.Command(task.Tool, args...)
+		cmd.Stderr = os.Stderr
+		output, err = cmd.Output()
+	} else {
+		if task.Worktree {
+			wt, err := worktree.Create()
+			if err != nil {
+				task.Status = "failed"
+				return fmt.Errorf("worktree creation failed: %w", err)
+			}
+			defer worktree.Cleanup(wt)
+
+			cmd := exec.Command(task.Tool, append(args, "--cwd", wt)...)
+			cmd.Stderr = os.Stderr
+			output, err = cmd.Output()
+		} else {
+			cmd := exec.Command(task.Tool, args...)
+			cmd.Stderr = os.Stderr
+			output, err = cmd.Output()
+		}
+	}
+
+	outputStr := strings.TrimSpace(string(output))
+
+	tokenCount := cost.EstimateTokens(string(output)) + 100
+	e.Tokens += tokenCount
+	costUSD := cost.EstimateCost(tokenCount)
+	e.Cost += costUSD
+	task.Cost = costUSD
+	task.TokenUsed = tokenCount
+
+	if err != nil {
+		task.Status = "failed"
+		task.Error = err.Error()
+		task.EndTime = time.Now().UnixMilli()
+		eventCh <- Event{Type: EventTaskUpdate, TaskID: task.ID, Status: "failed", Output: outputStr, Error: err.Error()}
+		e.State.Log(state.JournalEntry{
+			SessionID: e.SessionID,
+			TaskID:    task.ID,
+			Tool:      task.Tool,
+			Args:      args,
+			Output:    outputStr,
+			Error:     err.Error(),
+			Status:    "failed",
+			Cost:      costUSD,
+			Tokens:    tokenCount,
+		})
+		return err
+	}
+
+	task.Status = "completed"
+	task.Output = outputStr
+	task.EndTime = time.Now().UnixMilli()
+	e.Outputs[task.ID] = outputStr
+	eventCh <- Event{Type: EventTaskUpdate, TaskID: task.ID, Status: "completed", Output: outputStr}
+
+	e.State.Log(state.JournalEntry{
+		SessionID: e.SessionID,
+		TaskID:    task.ID,
+		Tool:      task.Tool,
+		Args:      args,
+		Output:    outputStr,
+		Status:    "completed",
+		Cost:      costUSD,
+		Tokens:    tokenCount,
+	})
+	return nil
+}
