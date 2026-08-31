@@ -1,0 +1,4 @@
+pivot.exe
+.env
+*.db
+.DS_Store
