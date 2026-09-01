@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"pivot/internal/core"
-	"pivot/internal/planner"
+	"github.com/Marwanmorsy999/pivot/internal/core"
+	"github.com/Marwanmorsy999/pivot/internal/planner"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
@@ -22,49 +22,49 @@ var (
 			MarginLeft(1)
 
 	pendingStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#626262"))
+		Foreground(lipgloss.Color("#626262"))
 
 	runningStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#FFAB40"))
+		Bold(true).
+		Foreground(lipgloss.Color("#FFAB40"))
 
 	completedStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#04B575"))
+		Bold(true).
+		Foreground(lipgloss.Color("#04B575"))
 
 	failedStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#FF4444"))
+		Bold(true).
+		Foreground(lipgloss.Color("#FF4444"))
 
 	skippedStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#888888"))
+		Foreground(lipgloss.Color("#888888"))
 
 	costStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#FFD700"))
+		Bold(true).
+		Foreground(lipgloss.Color("#FFD700"))
 
 	helpStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#626262")).
-			MarginLeft(1)
+		Foreground(lipgloss.Color("#626262")).
+		MarginLeft(1)
 )
 
-type tickMsg time.Time
+type eventClosedMsg struct{}
 
 type Model struct {
-	sessionID  string
-	goal       string
-	tasks      map[string]*core.Task
-	taskOrder  []string
-	eventCh    <-chan core.Event
-	spinner    spinner.Model
-	viewport   viewport.Model
-	table      table.Model
-	events     []string
-	done       bool
-	totalCost  float64
+	sessionID   string
+	goal        string
+	tasks       map[string]*core.Task
+	taskOrder   []string
+	eventCh     <-chan core.Event
+	spinner     spinner.Model
+	viewport    viewport.Model
+	table       table.Model
+	events      []string
+	done        bool
+	totalCost   float64
 	totalTokens int
-	startTime  time.Time
-	finalMsg   string
+	startTime   time.Time
+	finalMsg    string
 }
 
 func NewModel(sessionID, goal string, tasks []planner.Task, eventCh <-chan core.Event) *Model {
@@ -116,7 +116,6 @@ func NewModel(sessionID, goal string, tasks []planner.Task, eventCh <-chan core.
 	t.SetStyles(ts)
 
 	s := spinner.New(spinner.WithSpinner(spinner.Dot))
-
 	vp := viewport.New(80, 10)
 
 	return &Model{
@@ -156,8 +155,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case core.Event:
 		return m.handleEvent(msg)
 
-	case tickMsg:
-		// periodic viewport refresh if needed
+	case eventClosedMsg:
+		m.done = true
+		if m.finalMsg == "" {
+			m.finalMsg = "✅ Session complete"
+		}
 		return m, nil
 	}
 
@@ -174,17 +176,14 @@ func (m Model) View() string {
 	b.WriteString(fmt.Sprintf("  Runtime: %s\n", time.Since(m.startTime).Round(time.Second)))
 	b.WriteString("\n")
 
-	// Task table
 	b.WriteString(titleStyle.Render("📋 Tasks"))
 	b.WriteString("\n")
 	b.WriteString(m.table.View())
 	b.WriteString("\n\n")
 
-	// Cost summary
 	b.WriteString(costStyle.Render(fmt.Sprintf("💰 Cost: $%.6f  |  🔤 Tokens: %d", m.totalCost, m.totalTokens)))
 	b.WriteString("\n\n")
 
-	// Event log
 	b.WriteString(titleStyle.Render("📜 Log"))
 	b.WriteString("\n")
 
@@ -218,11 +217,7 @@ func (m Model) waitForEvent() tea.Cmd {
 	return func() tea.Msg {
 		ev, ok := <-m.eventCh
 		if !ok {
-			m.done = true
-			if m.finalMsg == "" {
-				m.finalMsg = "✅ Session complete"
-			}
-			return tickMsg(time.Now())
+			return eventClosedMsg{}
 		}
 		return ev
 	}
@@ -252,7 +247,6 @@ func (m Model) handleEvent(ev core.Event) (tea.Model, tea.Cmd) {
 			ev.Status,
 		))
 
-		// Update table row
 		rows := m.table.Rows()
 		for i, row := range rows {
 			if row[0] == ev.TaskID {
@@ -278,6 +272,7 @@ func (m Model) handleEvent(ev core.Event) (tea.Model, tea.Cmd) {
 		m.totalCost = ev.Cost
 		m.totalTokens = ev.Tokens
 		m.finalMsg = ev.Message
+		return m, nil
 
 	case core.EventError:
 		m.done = true
@@ -287,6 +282,7 @@ func (m Model) handleEvent(ev core.Event) (tea.Model, tea.Cmd) {
 			time.Now().Format("15:04:05"),
 			ev.Message,
 		))
+		return m, nil
 	}
 
 	return m, m.waitForEvent()
