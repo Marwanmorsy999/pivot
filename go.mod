@@ -1,4 +1,4 @@
-module pivot
+module github.com/Marwanmorsy999/pivot
 
 go 1.21
 
