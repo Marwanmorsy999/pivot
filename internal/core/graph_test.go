@@ -1,7 +1,7 @@
 package core
 
 import (
-	"pivot/internal/planner"
+	"github.com/Marwanmorsy999/pivot/internal/planner"
 	"reflect"
 	"testing"
 )
