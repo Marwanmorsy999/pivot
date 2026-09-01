@@ -35,18 +35,27 @@ type State struct {
 }
 
 func New() (*State, error) {
-	home, _ := pivotHome()
-	path := filepath.Join(home, ".pivot", "state.db")
+	home, err := pivotHome()
+	if err != nil {
+		return nil, fmt.Errorf("resolve pivot home: %w", err)
+	}
+	path := filepath.Join(home, ".pivot", "state.db") // #nosec G304 -- PIVOT_HOME is an explicit user-configured data directory.
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return nil, fmt.Errorf("create state directory: %w", err)
+	}
 	db, err := sql.Open("sqlite3", path)
 	if err != nil {
 		return nil, err
 	}
 	s := &State{db: db}
-	s.migrate()
+	if err := s.migrate(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	return s, nil
 }
 
-func (s *State) migrate() {
+func (s *State) migrate() error {
 	_, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS sessions (
 			id TEXT PRIMARY KEY,
@@ -70,9 +79,9 @@ func (s *State) migrate() {
 		);
 	`)
 	if err != nil {
-		// Log but don't panic; the app will fail gracefully on subsequent DB ops
-		fmt.Fprintf(os.Stderr, "state migration error: %v\n", err)
+		return fmt.Errorf("state migration: %w", err)
 	}
+	return nil
 }
 
 func (s *State) Close() error {
@@ -96,7 +105,9 @@ func (s *State) GetSessions() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 	var sessions []string
 	for rows.Next() {
 		var id string
@@ -104,6 +115,9 @@ func (s *State) GetSessions() ([]string, error) {
 			return nil, fmt.Errorf("scan session id: %w", err)
 		}
 		sessions = append(sessions, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate sessions: %w", err)
 	}
 	return sessions, nil
 }
@@ -113,7 +127,9 @@ func (s *State) GetFailedTasks(sessionID string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 	var tasks []string
 	for rows.Next() {
 		var id string
@@ -121,6 +137,9 @@ func (s *State) GetFailedTasks(sessionID string) ([]string, error) {
 			return nil, fmt.Errorf("scan task id: %w", err)
 		}
 		tasks = append(tasks, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate failed tasks: %w", err)
 	}
 	return tasks, nil
 }
