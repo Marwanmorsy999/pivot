@@ -39,7 +39,7 @@ jobs:
             GOOS: linux
             GOARCH: amd64
             BINARY: pivot-linux-amd64
-          - runner: macos-latest
+          - runner: macos-15-intel
             GOOS: darwin
             GOARCH: amd64
             BINARY: pivot-darwin-amd64
