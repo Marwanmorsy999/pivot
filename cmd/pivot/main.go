@@ -25,7 +25,9 @@ func main() {
 		Long:    "Orchestrate AI agents and CLI tools together in a single workflow with TUI, cost tracking, and worktree isolation.",
 		Version: version,
 		Run: func(cmd *cobra.Command, args []string) {
-			cmd.Help()
+			if err := cmd.Help(); err != nil {
+				fmt.Fprintf(os.Stderr, "failed to display help: %v\n", err)
+			}
 		},
 	}
 	rootCmd.SetVersionTemplate("PIVOT {{.Version}}\n")
@@ -34,9 +36,7 @@ func main() {
 		Use:   "init",
 		Short: "Initialize pivot (config, state DB, discover providers & local setup)",
 		Run: func(cmd *cobra.Command, args []string) {
-			// Detect everything automatically
 			detected := config.Detect()
-
 			cfg := config.ConfigFromDetection(detected)
 
 			if err := config.SaveDetected(cfg); err != nil {
@@ -48,7 +48,11 @@ func main() {
 				fmt.Printf("❌ Failed to initialize state: %v\n", err)
 				os.Exit(1)
 			}
-			defer s.Close()
+			defer func() {
+				if err := s.Close(); err != nil {
+					fmt.Fprintf(os.Stderr, "state close warning: %v\n", err)
+				}
+			}()
 
 			fmt.Println("✅ Detected providers & local setup automatically.")
 			fmt.Printf("🔍 AI Provider: %s | Model: %s\n", cfg.Planner.Provider, cfg.Planner.Model)
@@ -91,7 +95,11 @@ func main() {
 				fmt.Printf("❌ Failed to initialize state: %v\n", err)
 				return
 			}
-			defer s.Close()
+			defer func() {
+				if err := s.Close(); err != nil {
+					fmt.Fprintf(os.Stderr, "state close warning: %v\n", err)
+				}
+			}()
 
 			sessionID, err := s.CreateSession(goal)
 			if err != nil {
@@ -105,11 +113,12 @@ func main() {
 			case "openai", "groq", "gemini", "anthropic":
 				endpoint := cfg.Planner.Endpoint
 				if endpoint == "" {
-					if cfg.Planner.Provider == "groq" {
+					switch cfg.Planner.Provider {
+					case "groq":
 						endpoint = "https://api.groq.com/openai/v1/chat/completions"
-					} else if cfg.Planner.Provider == "gemini" {
+					case "gemini":
 						endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-					} else {
+					default:
 						endpoint = "https://api.openai.com/v1/chat/completions"
 					}
 				}
@@ -164,7 +173,11 @@ func main() {
 				fmt.Printf("❌ Failed to initialize state: %v\n", err)
 				return
 			}
-			defer s.Close()
+			defer func() {
+				if err := s.Close(); err != nil {
+					fmt.Fprintf(os.Stderr, "state close warning: %v\n", err)
+				}
+			}()
 
 			failed, err := s.GetFailedTasks(sessionID)
 			if err != nil {
@@ -198,12 +211,16 @@ func main() {
 				p = &planner.OpenAPlanner{APIKey: cfg.Planner.APIKey, Model: cfg.Planner.Model, Endpoint: cfg.Planner.Endpoint}
 			}
 
-			tasks, _ := p.Plan(goal)
+			tasks, err := p.Plan(goal)
+			if err != nil {
+				fmt.Printf("❌ Planning failed: %v\n", err)
+				return
+			}
 			eventCh := make(chan core.Event, 100)
 			go func() {
 				orchestrator := core.NewOrchestrator(tasks, sessionID, s, eventCh)
 				err := orchestrator.Run(ctx)
-				if err != nil {
+				if err != nil && err != context.Canceled {
 					eventCh <- core.Event{Type: core.EventError, Message: err.Error()}
 				}
 				close(eventCh)
@@ -258,7 +275,11 @@ func main() {
 				fmt.Printf("❌ Failed to initialize state: %v\n", err)
 				return
 			}
-			defer s.Close()
+			defer func() {
+				if err := s.Close(); err != nil {
+					fmt.Fprintf(os.Stderr, "state close warning: %v\n", err)
+				}
+			}()
 
 			sessions, err := s.GetSessions()
 			if err != nil {
@@ -271,7 +292,11 @@ func main() {
 			}
 			fmt.Println("📂 Recent Sessions:")
 			for _, id := range sessions {
-				goal, _ := s.GetGoal(id)
+				goal, err := s.GetGoal(id)
+				if err != nil {
+					fmt.Printf("  - %s: <failed to load goal: %v>\n", id, err)
+					continue
+				}
 				fmt.Printf("  - %s: %s\n", id, goal)
 			}
 		},
