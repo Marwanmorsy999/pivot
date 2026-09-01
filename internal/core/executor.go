@@ -54,7 +54,14 @@ func (e *Executor) Execute(ctx <-chan struct{}, task *Task, eventCh chan Event) 
 	var output []byte
 
 	if task.Type == "tool" {
-		cmd := exec.Command(task.Tool, args...)
+		cmd, cmdErr := commandForTool(task.Tool, args)
+		if cmdErr != nil {
+			task.Status = "failed"
+			task.Error = cmdErr.Error()
+			task.EndTime = time.Now().UnixMilli()
+			eventCh <- Event{Type: EventTaskUpdate, TaskID: task.ID, Status: "failed", Error: cmdErr.Error()}
+			return cmdErr
+		}
 		cmd.Stderr = os.Stderr
 		output, err = cmd.Output()
 	} else {
@@ -70,11 +77,19 @@ func (e *Executor) Execute(ctx <-chan struct{}, task *Task, eventCh chan Event) 
 				}
 			}()
 
-			cmd := exec.Command(task.Tool, append(args, "--cwd", wt)...)
+			cmd, cmdErr := commandForTool(task.Tool, append(args, "--cwd", wt))
+			if cmdErr != nil {
+				task.Status = "failed"
+				return cmdErr
+			}
 			cmd.Stderr = os.Stderr
 			output, err = cmd.Output()
 		} else {
-			cmd := exec.Command(task.Tool, args...)
+			cmd, cmdErr := commandForTool(task.Tool, args)
+			if cmdErr != nil {
+				task.Status = "failed"
+				return cmdErr
+			}
 			cmd.Stderr = os.Stderr
 			output, err = cmd.Output()
 		}
@@ -129,4 +144,41 @@ func (e *Executor) Execute(ctx <-chan struct{}, task *Task, eventCh chan Event) 
 		fmt.Fprintf(os.Stderr, "failed to log task completion: %v\n", err)
 	}
 	return nil
+}
+
+func commandForTool(tool string, args []string) (*exec.Cmd, error) {
+	switch tool {
+	case "find":
+		return exec.Command("find", args...), nil
+	case "grep":
+		return exec.Command("grep", args...), nil
+	case "awk":
+		return exec.Command("awk", args...), nil
+	case "sed":
+		return exec.Command("sed", args...), nil
+	case "jq":
+		return exec.Command("jq", args...), nil
+	case "curl":
+		return exec.Command("curl", args...), nil
+	case "git":
+		return exec.Command("git", args...), nil
+	case "docker":
+		return exec.Command("docker", args...), nil
+	case "kubectl":
+		return exec.Command("kubectl", args...), nil
+	case "python3":
+		return exec.Command("python3", args...), nil
+	case "node":
+		return exec.Command("node", args...), nil
+	case "go":
+		return exec.Command("go", args...), nil
+	case "ollama":
+		return exec.Command("ollama", args...), nil
+	case "claude-code":
+		return exec.Command("claude-code", args...), nil
+	case "gemini-cli":
+		return exec.Command("gemini-cli", args...), nil
+	default:
+		return nil, fmt.Errorf("unsupported executable: %q", tool)
+	}
 }
