@@ -24,7 +24,9 @@ jobs:
           cache: false
 
       - name: Regenerate module metadata
-        run: go mod tidy
+        run: |
+          rm -f go.sum
+          go mod tidy
 
       - name: Commit generated metadata
         run: |
