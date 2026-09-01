@@ -17,9 +17,9 @@ import (
 
 var (
 	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#7D56F4")).
-			MarginLeft(1)
+		Bold(true).
+		Foreground(lipgloss.Color("#7D56F4")).
+		MarginLeft(1)
 
 	pendingStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#626262"))
@@ -171,9 +171,9 @@ func (m Model) View() string {
 
 	b.WriteString(titleStyle.Render("⚡ PIVOT — Hybrid CLI Orchestrator"))
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("  Session: %s\n", m.sessionID))
-	b.WriteString(fmt.Sprintf("  Goal: %s\n", m.goal))
-	b.WriteString(fmt.Sprintf("  Runtime: %s\n", time.Since(m.startTime).Round(time.Second)))
+	_, _ = fmt.Fprintf(&b, "  Session: %s\n", m.sessionID)
+	_, _ = fmt.Fprintf(&b, "  Goal: %s\n", m.goal)
+	_, _ = fmt.Fprintf(&b, "  Runtime: %s\n", time.Since(m.startTime).Round(time.Second))
 	b.WriteString("\n")
 
 	b.WriteString(titleStyle.Render("📋 Tasks"))
@@ -181,8 +181,7 @@ func (m Model) View() string {
 	b.WriteString(m.table.View())
 	b.WriteString("\n\n")
 
-	b.WriteString(costStyle.Render(fmt.Sprintf("💰 Cost: $%.6f  |  🔤 Tokens: %d", m.totalCost, m.totalTokens)))
-	b.WriteString("\n\n")
+	_, _ = fmt.Fprintf(&b, "%s\n\n", costStyle.Render(fmt.Sprintf("💰 Cost: $%.6f  |  🔤 Tokens: %d", m.totalCost, m.totalTokens)))
 
 	b.WriteString(titleStyle.Render("📜 Log"))
 	b.WriteString("\n")
@@ -193,7 +192,7 @@ func (m Model) View() string {
 			start = len(m.events) - 8
 		}
 		for _, e := range m.events[start:] {
-			b.WriteString(fmt.Sprintf("  %s\n", e))
+			_, _ = fmt.Fprintf(&b, "  %s\n", e)
 		}
 	} else {
 		b.WriteString(pendingStyle.Render("  Waiting for events..."))
