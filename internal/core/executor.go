@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"pivot/internal/cost"
-	"pivot/internal/state"
-	"pivot/internal/worktree"
+	"github.com/Marwanmorsy999/pivot/internal/cost"
+	"github.com/Marwanmorsy999/pivot/internal/state"
+	"github.com/Marwanmorsy999/pivot/internal/worktree"
 )
 
 type Executor struct {
