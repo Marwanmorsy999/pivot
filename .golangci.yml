@@ -1,3 +1,5 @@
+version: "2"
+
 run:
   timeout: 5m
   tests: true
@@ -6,41 +8,46 @@ run:
 linters:
   enable:
     - errcheck
-    - gosimple
     - govet
     - ineffassign
     - staticcheck
-    - typecheck
     - unused
     - gosec
-    - goimports
     - misspell
     - bodyclose
     - unconvert
     - nakedret
     - prealloc
 
-linters-settings:
-  gosec:
-    severity: medium
-    confidence: medium
-  goimports:
-    local-prefixes: github.com/Marwanmorsy999/pivot
-  misspell:
-    locale: US
-  nakedret:
-    max-func-lines: 30
+  settings:
+    gosec:
+      severity: medium
+      confidence: medium
+    misspell:
+      locale: US
+    nakedret:
+      max-func-lines: 30
+
+  exclusions:
+    rules:
+      - path: _test\.go$
+        linters:
+          - errcheck
+          - gosec
+
+formatters:
+  enable:
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/Marwanmorsy999/pivot
 
 issues:
-  exclude-rules:
-    - path: _test\.go$
-      linters:
-        - errcheck
-        - gosec
-  exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
 
 output:
   formats:
-    - format: colored-line-number
+    colored-line-number:
+      path: stdout
