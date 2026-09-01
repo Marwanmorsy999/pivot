@@ -75,7 +75,10 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 
 		task := graph.GetTask(id)
 
-		completed, _ := o.state.IsTaskCompleted(o.sessionID, id)
+		completed, err := o.state.IsTaskCompleted(o.sessionID, id)
+		if err != nil {
+			return fmt.Errorf("check task %s completion: %w", id, err)
+		}
 		if completed {
 			task.Status = "skipped"
 			o.eventCh <- Event{Type: EventTaskUpdate, TaskID: id, Status: "skipped"}
@@ -95,8 +98,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		}
 		mu.Unlock()
 
-		err := executor.Execute(ctx.Done(), task, o.eventCh)
-		if err != nil {
+		if err := executor.Execute(ctx.Done(), task, o.eventCh); err != nil {
 			return err
 		}
 	}
@@ -104,9 +106,9 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	totalCost := executor.Cost
 	totalTokens := executor.Tokens
 	o.eventCh <- Event{
-		Type:   EventComplete,
-		Cost:   totalCost,
-		Tokens: totalTokens,
+		Type:    EventComplete,
+		Cost:    totalCost,
+		Tokens:  totalTokens,
 		Message: fmt.Sprintf("✅ Completed! Total cost: $%.6f, Tokens: %d", totalCost, totalTokens),
 	}
 
