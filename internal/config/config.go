@@ -29,12 +29,12 @@ type Config struct {
 
 // Detection report for providers and local setup
 type DetectionResult struct {
-	Providers  map[string]bool `yaml:"providers"`
-	LocalTools map[string]bool `yaml:"local_tools"`
-	DetectedProvider string    `yaml:"detected_provider"`
-	DetectedModel    string    `yaml:"detected_model"`
-	DetectedEndpoint string    `yaml:"detected_endpoint"`
-	DetectedAPIKey   string    `yaml:"detected_api_key"`
+	Providers        map[string]bool `yaml:"providers"`
+	LocalTools       map[string]bool `yaml:"local_tools"`
+	DetectedProvider string          `yaml:"detected_provider"`
+	DetectedModel    string          `yaml:"detected_model"`
+	DetectedEndpoint string          `yaml:"detected_endpoint"`
+	DetectedAPIKey   string          `yaml:"detected_api_key"`
 }
 
 func Detect() *DetectionResult {
@@ -87,7 +87,7 @@ func (r *DetectionResult) detectProviders() {
 	client := &http.Client{Timeout: 500 * time.Millisecond}
 	resp, err := client.Get("http://localhost:11434/api/tags")
 	if err == nil && resp != nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		r.Providers["ollama"] = true
 		if r.DetectedProvider == "" {
 			r.DetectedProvider = "ollama"
@@ -157,8 +157,11 @@ func pivotHome() (string, error) {
 }
 
 func Load() (*Config, error) {
-	home, _ := pivotHome()
-	path := filepath.Join(home, ".pivot", "config.yaml")
+	home, err := pivotHome()
+	if err != nil {
+		return nil, fmt.Errorf("resolve pivot home: %w", err)
+	}
+	path := filepath.Join(home, ".pivot", "config.yaml") // #nosec G304 -- PIVOT_HOME is an explicit user-configured data directory.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return defaultConfig(), nil
@@ -207,36 +210,42 @@ func ConfigFromDetection(r *DetectionResult) *Config {
 }
 
 func SaveDetected(cfg *Config) error {
-	home, _ := pivotHome()
-	dir := filepath.Join(home, ".pivot")
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	home, err := pivotHome()
+	if err != nil {
+		return fmt.Errorf("resolve pivot home: %w", err)
+	}
+	dir := filepath.Join(home, ".pivot") // #nosec G304 -- PIVOT_HOME is an explicit user-configured data directory.
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
-	path := filepath.Join(dir, "config.yaml")
+	path := filepath.Join(dir, "config.yaml") // #nosec G304 -- path is inside the explicit PIVOT_HOME directory.
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, 0600); err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
 	return nil
 }
 
 func SaveDefault() error {
-	home, _ := pivotHome()
-	dir := filepath.Join(home, ".pivot")
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	home, err := pivotHome()
+	if err != nil {
+		return fmt.Errorf("resolve pivot home: %w", err)
+	}
+	dir := filepath.Join(home, ".pivot") // #nosec G304 -- PIVOT_HOME is an explicit user-configured data directory.
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
-	path := filepath.Join(dir, "config.yaml")
+	path := filepath.Join(dir, "config.yaml") // #nosec G304 -- path is inside the explicit PIVOT_HOME directory.
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		cfg := defaultConfig()
 		data, err := yaml.Marshal(cfg)
 		if err != nil {
 			return fmt.Errorf("marshal config: %w", err)
 		}
-		if err := os.WriteFile(path, data, 0644); err != nil {
+		if err := os.WriteFile(path, data, 0600); err != nil {
 			return fmt.Errorf("write config: %w", err)
 		}
 	}
