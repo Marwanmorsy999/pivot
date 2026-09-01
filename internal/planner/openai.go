@@ -57,7 +57,9 @@ Goal: "%s"`, goal)
 	if err != nil {
 		return nil, fmt.Errorf("request to API: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	resBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -66,7 +68,9 @@ Goal: "%s"`, goal)
 
 	var wrapper struct {
 		Choices []struct {
-			Message struct{ Content string `json:"content"` } `json:"message"`
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(resBody, &wrapper); err != nil {
@@ -76,7 +80,9 @@ Goal: "%s"`, goal)
 		return nil, fmt.Errorf("no response choices from API")
 	}
 
-	var result struct{ Tasks []Task `json:"tasks"` }
+	var result struct {
+		Tasks []Task `json:"tasks"`
+	}
 	if err := json.Unmarshal([]byte(wrapper.Choices[0].Message.Content), &result); err != nil {
 		return nil, fmt.Errorf("unmarshal tasks: %w", err)
 	}
