@@ -2,8 +2,11 @@ package config
 
 import (
 	"fmt"
+	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -22,6 +25,128 @@ type Config struct {
 	Cost struct {
 		Enabled bool `yaml:"enabled"`
 	} `yaml:"cost"`
+}
+
+// Detection report for providers and local setup
+type DetectionResult struct {
+	Providers  map[string]bool `yaml:"providers"`
+	LocalTools map[string]bool `yaml:"local_tools"`
+	DetectedProvider string    `yaml:"detected_provider"`
+	DetectedModel    string    `yaml:"detected_model"`
+	DetectedEndpoint string    `yaml:"detected_endpoint"`
+	DetectedAPIKey   string    `yaml:"detected_api_key"`
+}
+
+func Detect() *DetectionResult {
+	r := &DetectionResult{
+		Providers:  make(map[string]bool),
+		LocalTools: make(map[string]bool),
+	}
+
+	// Detect AI providers
+	r.detectProviders()
+	// Detect local tools/setup
+	r.detectLocalTools()
+
+	// Pick best detected provider
+	r.pickBestProvider()
+	return r
+}
+
+func (r *DetectionResult) detectProviders() {
+	// OpenAI
+	if k := os.Getenv("OPENAI_API_KEY"); k != "" {
+		r.Providers["openai"] = true
+		r.DetectedAPIKey = k
+	}
+	// Anthropic
+	if k := os.Getenv("ANTHROPIC_API_KEY"); k != "" {
+		r.Providers["anthropic"] = true
+		if r.DetectedAPIKey == "" {
+			r.DetectedAPIKey = k
+		}
+	}
+	// Groq
+	if k := os.Getenv("GROQ_API_KEY"); k != "" {
+		r.Providers["groq"] = true
+		if r.DetectedAPIKey == "" {
+			r.DetectedAPIKey = k
+		}
+	}
+	// Gemini / Google
+	if k := os.Getenv("GEMINI_API_KEY"); k != "" || os.Getenv("GOOGLE_API_KEY") != "" {
+		r.Providers["gemini"] = true
+		if k == "" {
+			k = os.Getenv("GOOGLE_API_KEY")
+		}
+		if r.DetectedAPIKey == "" && k != "" {
+			r.DetectedAPIKey = k
+		}
+	}
+	// Ollama (local endpoint check)
+	client := &http.Client{Timeout: 500 * time.Millisecond}
+	resp, err := client.Get("http://localhost:11434/api/tags")
+	if err == nil && resp != nil {
+		resp.Body.Close()
+		r.Providers["ollama"] = true
+		if r.DetectedProvider == "" {
+			r.DetectedProvider = "ollama"
+			r.DetectedEndpoint = "http://localhost:11434"
+			r.DetectedModel = "llama3.2:3b"
+		}
+	} else {
+		// Try default ollama endpoint anyway if binary exists
+		if _, err := exec.LookPath("ollama"); err == nil {
+			r.Providers["ollama"] = true
+			if r.DetectedProvider == "" {
+				r.DetectedProvider = "ollama"
+				r.DetectedEndpoint = "http://localhost:11434"
+				r.DetectedModel = "llama3.2:3b"
+			}
+		}
+	}
+}
+
+func (r *DetectionResult) detectLocalTools() {
+	tools := []string{"git", "docker", "node", "python3", "python", "go", "kubectl", "npm", "curl", "jq", "az", "docker-compose"}
+	for _, t := range tools {
+		if _, err := exec.LookPath(t); err == nil {
+			r.LocalTools[t] = true
+		}
+	}
+}
+
+func (r *DetectionResult) pickBestProvider() {
+	// Prefer cloud providers if keys exist, else ollama
+	if r.Providers["anthropic"] {
+		r.DetectedProvider = "anthropic"
+		r.DetectedModel = "claude-3-5-sonnet-20241022"
+		r.DetectedEndpoint = "https://api.anthropic.com/v1/chat/completions"
+		return
+	}
+	if r.Providers["openai"] {
+		r.DetectedProvider = "openai"
+		r.DetectedModel = "gpt-4o-mini"
+		r.DetectedEndpoint = "https://api.openai.com/v1/chat/completions"
+		return
+	}
+	if r.Providers["groq"] {
+		r.DetectedProvider = "groq"
+		r.DetectedModel = "llama-3.1-8b-instant"
+		r.DetectedEndpoint = "https://api.groq.com/openai/v1/chat/completions"
+		return
+	}
+	if r.Providers["gemini"] {
+		r.DetectedProvider = "gemini"
+		r.DetectedModel = "gemini-1.5-flash"
+		r.DetectedEndpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+		return
+	}
+	if r.Providers["ollama"] {
+		r.DetectedProvider = "ollama"
+		r.DetectedModel = "llama3.2:3b"
+		r.DetectedEndpoint = "http://localhost:11434"
+	}
 }
 
 func pivotHome() (string, error) {
@@ -58,6 +183,44 @@ func defaultConfig() *Config {
 	cfg.Worktree.BaseDir = filepath.Join(os.TempDir(), "pivot-worktrees")
 	cfg.Cost.Enabled = true
 	return cfg
+}
+
+func ConfigFromDetection(r *DetectionResult) *Config {
+	cfg := defaultConfig()
+	if r.DetectedProvider != "" {
+		cfg.Planner.Provider = r.DetectedProvider
+	}
+	if r.DetectedModel != "" {
+		cfg.Planner.Model = r.DetectedModel
+	}
+	if r.DetectedEndpoint != "" {
+		cfg.Planner.Endpoint = r.DetectedEndpoint
+	}
+	if r.DetectedAPIKey != "" {
+		cfg.Planner.APIKey = r.DetectedAPIKey
+	}
+	// If any cloud provider detected and worktree available, enable it optionally
+	if r.LocalTools["git"] && r.LocalTools["docker"] {
+		cfg.Worktree.Enabled = true
+	}
+	return cfg
+}
+
+func SaveDetected(cfg *Config) error {
+	home, _ := pivotHome()
+	dir := filepath.Join(home, ".pivot")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+	path := filepath.Join(dir, "config.yaml")
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	return nil
 }
 
 func SaveDefault() error {

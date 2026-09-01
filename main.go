@@ -25,9 +25,14 @@ func main() {
 
 	initCmd := &cobra.Command{
 		Use:   "init",
-		Short: "Initialize pivot (config, state DB, discover tools)",
+		Short: "Initialize pivot (config, state DB, discover providers & local setup)",
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := config.SaveDefault(); err != nil {
+			// Detect everything automatically
+			detected := config.Detect()
+
+			cfg := config.ConfigFromDetection(detected)
+
+			if err := config.SaveDetected(cfg); err != nil {
 				fmt.Printf("❌ Failed to save config: %v\n", err)
 				os.Exit(1)
 			}
@@ -37,7 +42,15 @@ func main() {
 				os.Exit(1)
 			}
 			defer s.Close()
-			fmt.Println("✅ Initialized ~/.pivot/config.yaml")
+
+			fmt.Println("✅ Detected providers & local setup automatically.")
+			fmt.Printf("🔍 AI Provider: %s | Model: %s\n", cfg.Planner.Provider, cfg.Planner.Model)
+			fmt.Printf("🔌 Endpoint: %s\n", cfg.Planner.Endpoint)
+			if cfg.Planner.APIKey != "" {
+				fmt.Println("🔑 API Key: configured (hidden)")
+			}
+			fmt.Printf("🛠 Local Tools Found: %d (git=%v docker=%v node=%v python=%v)\n", len(detected.LocalTools), detected.LocalTools["git"], detected.LocalTools["docker"], detected.LocalTools["node"], detected.LocalTools["python3"] || detected.LocalTools["python"])
+			fmt.Println("✅ Initialized ~/.pivot/config.yaml (auto-detected)")
 			fmt.Println("✅ Initialized ~/.pivot/state.db")
 			fmt.Println("🔧 Run 'pivot run \"your goal\"' to start orchestrating.")
 		},
@@ -196,6 +209,39 @@ func main() {
 		},
 	}
 
+	detectCmd := &cobra.Command{
+		Use:   "detect",
+		Short: "Detect all providers and local setup (super easy)",
+		Run: func(cmd *cobra.Command, args []string) {
+			r := config.Detect()
+			fmt.Println("🔍 Pivot Auto-Detection Report")
+			fmt.Println("──────────────────────────────")
+			fmt.Println("AI Providers Found:")
+			for name, found := range r.Providers {
+				status := "❌"
+				if found {
+					status = "✅"
+				}
+				fmt.Printf("  %s %s\n", status, name)
+			}
+			fmt.Println("Local Tools Detected:")
+			if len(r.LocalTools) == 0 {
+				fmt.Println("  (none found)")
+			} else {
+				for name := range r.LocalTools {
+					fmt.Printf("  ✅ %s\n", name)
+				}
+			}
+			fmt.Println("──────────────────────────────")
+			fmt.Printf("🏆 Best Provider: %s (model: %s)\n", r.DetectedProvider, r.DetectedModel)
+			fmt.Printf("🔌 Endpoint: %s\n", r.DetectedEndpoint)
+			if r.DetectedAPIKey != "" {
+				fmt.Println("🔑 API Key: configured")
+			}
+			fmt.Println("\n💡 Run 'pivot init' to apply auto-config.")
+		},
+	}
+
 	statusCmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show recent sessions",
@@ -224,7 +270,7 @@ func main() {
 		},
 	}
 
-	rootCmd.AddCommand(initCmd, runCmd, resumeCmd, statusCmd)
+	rootCmd.AddCommand(initCmd, runCmd, resumeCmd, statusCmd, detectCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
