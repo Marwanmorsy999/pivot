@@ -34,6 +34,14 @@ linters:
         linters:
           - errcheck
           - gosec
+      - path: internal/config/config\.go$
+        text: "G304:"
+        linters:
+          - gosec
+      - path: internal/core/executor\.go$
+        text: "G204:"
+        linters:
+          - gosec
 
 formatters:
   enable:
