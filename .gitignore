@@ -1,4 +1,3 @@
-```
 # Dependencies
 node_modules/
 vendor/
@@ -7,16 +6,15 @@ vendor/
 dist/
 build/
 target/
-
-# Go specific
-*.o
-*.a
-*.so
+pivot
+pivot.exe
 *.exe
 *.dll
 *.dylib
+*.so
+*.o
+*.a
 *.test
-*_test.go
 
 # Environment files
 .env
@@ -43,6 +41,7 @@ Thumbs.db
 
 # Coverage
 coverage/
+coverage.out
 htmlcov/
 .coverage
 
@@ -52,4 +51,3 @@ __pycache__/
 *.pyo
 *.pyd
 .Python
-```

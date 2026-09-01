@@ -1,30 +1,32 @@
-.PHONY: build test lint clean run help
+.PHONY: build test lint clean run help fmt vet tidy install build-all
 
 BINARY_NAME=pivot
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION)"
+PKG=./cmd/pivot
 
 default: help
 
-## build: Build the binary
+## build: Build the binary (requires CGO for SQLite)
 build:
-	go build $(LDFLAGS) -o $(BINARY_NAME) .
+	CGO_ENABLED=1 go build $(LDFLAGS) -o $(BINARY_NAME) $(PKG)
 
-## build-all: Build for multiple platforms
+## build-all: Build for multiple platforms (CGO)
 build-all:
-	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-linux-amd64 .
-	GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-darwin-amd64 .
-	GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-darwin-arm64 .
-	GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-windows-amd64.exe .
+	mkdir -p dist
+	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-linux-amd64 $(PKG)
+	CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-darwin-amd64 $(PKG)
+	CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-darwin-arm64 $(PKG)
+	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-windows-amd64.exe $(PKG)
 
-## test: Run all tests
+## test: Run all tests with race detector
 test:
-	go test -v -race -coverprofile=coverage.out ./...
+	CGO_ENABLED=1 go test -v -race -coverprofile=coverage.out ./...
 	go tool cover -func=coverage.out
 
 ## test-short: Run tests without race detector
 test-short:
-	go test -v ./...
+	CGO_ENABLED=1 go test -v ./...
 
 ## lint: Run linter (requires golangci-lint)
 lint:
@@ -54,7 +56,7 @@ run: build
 
 ## install: Install to GOPATH/bin
 install:
-	go install $(LDFLAGS) .
+	CGO_ENABLED=1 go install $(LDFLAGS) $(PKG)
 
 ## help: Show this help
 help:

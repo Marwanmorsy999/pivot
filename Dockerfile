@@ -1,5 +1,7 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.22-alpine AS builder
+
+RUN apk add --no-cache gcc musl-dev
 
 WORKDIR /app
 
@@ -10,13 +12,13 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the binary
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o pivot ./cmd/pivot
+# Build the binary with CGO (required for go-sqlite3)
+RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w -X main.version=docker" -o pivot ./cmd/pivot
 
 # Runtime stage
-FROM alpine:3.19
+FROM alpine:3.20
 
-RUN apk --no-cache add git bash
+RUN apk --no-cache add git bash ca-certificates
 
 WORKDIR /app
 
