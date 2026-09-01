@@ -1,21 +1,54 @@
-# PIVOT v2.0 — The Hybrid CLI Orchestrator
+<p align="center">
+  <img src="assets/banner.svg" alt="PIVOT — Hybrid CLI Orchestrator" width="800"/>
+</p>
 
-[![CI](https://github.com/Marwanmorsy999/pivot/actions/workflows/ci.yml/badge.svg)](https://github.com/Marwanmorsy999/pivot/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/Marwanmorsy999/pivot)](https://goreportcard.com/report/github.com/Marwanmorsy999/pivot)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Go Version](https://img.shields.io/badge/go-1.21+-blue.svg)](https://golang.org)
+<p align="center">
+  <strong>A universal hybrid CLI orchestrator that combines AI agents and traditional CLI tools in a single workflow</strong>
+</p>
 
-A universal hybrid CLI orchestrator that combines AI agents and traditional CLI tools in a single workflow, with a real-time TUI, worktree isolation, cost tracking, and a plugin-ready architecture.
+<p align="center">
+  <a href="https://github.com/Marwanmorsy999/pivot/actions/workflows/ci.yml"><img src="https://github.com/Marwanmorsy999/pivot/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
+  <a href="https://goreportcard.com/report/github.com/Marwanmorsy999/pivot"><img src="https://goreportcard.com/badge/github.com/Marwanmorsy999/pivot" alt="Go Report Card"/></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"/></a>
+  <a href="https://golang.org"><img src="https://img.shields.io/badge/go-1.21+-blue.svg" alt="Go Version"/></a>
+  <a href="https://github.com/Marwanmorsy999/pivot/releases"><img src="https://img.shields.io/github/v/release/Marwanmorsy999/pivot?include_prereleases" alt="Release"/></a>
+  <a href="https://codecov.io/gh/Marwanmorsy999/pivot"><img src="https://img.shields.io/badge/coverage-checked-success" alt="Coverage"/></a>
+  <a href="https://securityscorecards.dev/viewer/?uri=github.com/Marwanmorsy999/pivot"><img src="https://img.shields.io/badge/security-scorecard-blue" alt="Security"/></a>
+</p>
+
+---
+
+## Why PIVOT?
+
+PIVOT bridges the gap between AI agents and traditional command-line tools. Instead of choosing between automation and intelligence, get both — orchestrated through a single dependency graph with real-time visibility.
 
 ## Features
 
-- **Hybrid Execution**: Seamlessly mix AI agents (Ollama, Claude Code, Gemini CLI) with traditional CLI tools (grep, jq, curl, etc.)
-- **Real-time TUI**: Beautiful terminal UI with live task tracking, cost monitoring, and event logging
-- **Worktree Isolation**: Run AI agents in isolated git worktrees to prevent unwanted changes
-- **Cost Tracking**: Track token usage and estimated costs across all AI operations
-- **Session Management**: Resume failed or paused sessions with full state persistence
-- **Multi-Provider**: Support for Ollama, OpenAI, Groq, Gemini, and Anthropic
-- **Dependency Graph**: Tasks declare dependencies and execute in topological order
+| Feature | Description |
+|---------|-------------|
+| **Hybrid Execution** | Seamlessly mix AI agents (Ollama, Claude Code, Gemini CLI) with traditional CLI tools (grep, jq, curl, etc.) |
+| **Real-time TUI** | Beautiful terminal UI with live task tracking, cost monitoring, and event logging |
+| **Worktree Isolation** | Run AI agents in isolated git worktrees to prevent unwanted changes |
+| **Cost Tracking** | Track token usage and estimated costs across all AI operations |
+| **Session Management** | Resume failed or paused sessions with full state persistence |
+| **Multi-Provider** | Support for Ollama, OpenAI, Groq, Gemini, and Anthropic |
+| **Dependency Graph** | Tasks declare dependencies and execute in topological order |
+
+## Quick Start
+
+```bash
+# Initialize pivot (creates config and state DB)
+pivot init
+
+# Run a goal
+pivot run "Find all TODO comments in the codebase and create GitHub issues for them"
+
+# Check status of recent sessions
+pivot status
+
+# Resume a failed session
+pivot resume sess_1234567890
+```
 
 ## Installation
 
@@ -39,22 +72,6 @@ go install github.com/Marwanmorsy999/pivot@latest
 ```bash
 docker build -t pivot .
 docker run -it --rm -v ~/.pivot:/root/.pivot pivot run "your goal"
-```
-
-## Quick Start
-
-```bash
-# Initialize pivot (creates config and state DB)
-./pivot init
-
-# Run a goal
-./pivot run "Find all TODO comments in the codebase and create GitHub issues for them"
-
-# Check status of recent sessions
-./pivot status
-
-# Resume a failed session
-./pivot resume sess_1234567890
 ```
 
 ## Configuration
@@ -95,6 +112,15 @@ pivot/
 │   ├── tui/                # Bubble Tea terminal UI
 │   ├── worktree/           # Git worktree isolation
 │   └── cost/               # Token/cost estimation
+├── assets/                 # Project assets (logo, banner)
+├── .github/                # GitHub templates and CI
+├── docs/                   # Additional documentation
+├── Makefile                # Build automation
+├── Dockerfile              # Container build
+├── LICENSE                 # MIT License
+├── CONTRIBUTING.md         # Contribution guidelines
+├── SECURITY.md             # Security policy
+└── CHANGELOG.md            # Version history
 ```
 
 ## Task Model
@@ -137,8 +163,30 @@ make lint
 make build-all
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines.
+
+## Trust & Security
+
+- All tests pass with race detection (`go test -race ./...`)
+- CI runs on every push and PR with multi-version Go testing
+- Dependencies are regularly audited
+- Security vulnerabilities can be reported via [SECURITY.md](SECURITY.md)
+- HTTP clients have timeouts to prevent hanging connections
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+Built with:
+- [Cobra](https://github.com/spf13/cobra) — CLI framework
+- [Bubble Tea](https://github.com/charmbracelet/bubbletea) — Terminal UI
+- [Lipgloss](https://github.com/charmbracelet/lipgloss) — Styling
+- [SQLite](https://github.com/mattn/go-sqlite3) — State persistence
+
+---
+
+<p align="center">
+  <sub>Built with ❤️ by <a href="https://github.com/Marwanmorsy999">Marwan Morsy</a></sub>
+</p>

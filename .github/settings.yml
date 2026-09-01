@@ -1,0 +1,57 @@
+# These settings are synced to the repository by GitHub when the file is present in the default branch.
+
+repository:
+  name: pivot
+  description: A universal hybrid CLI orchestrator that combines AI agents and traditional CLI tools in a single workflow
+  homepage: https://github.com/Marwanmorsy999/pivot
+  topics: go, cli, ai, orchestrator, tui, ollama, openai, hybrid, automation, bubbletea
+  private: false
+  has_issues: true
+  has_projects: true
+  has_wiki: false
+  has_downloads: true
+  default_branch: main
+  allow_squash_merge: true
+  allow_merge_commit: true
+  allow_rebase_merge: true
+  delete_branch_on_merge: true
+
+labels:
+  - name: bug
+    color: d73a4a
+    description: Something isn't working
+  - name: enhancement
+    color: a2eeef
+    description: New feature or request
+  - name: documentation
+    color: 0075ca
+    description: Improvements or additions to documentation
+  - name: good first issue
+    color: 7057ff
+    description: Good for newcomers
+  - name: help wanted
+    color: 008672
+    description: Extra attention is needed
+  - name: security
+    color: ff7619
+    description: Security-related issue
+  - name: dependencies
+    color: 0366d6
+    description: Pull requests that update a dependency file
+
+branches:
+  - name: main
+    protection:
+      required_pull_request_reviews:
+        required_approving_review_count: 1
+        dismiss_stale_reviews: true
+      required_status_checks:
+        strict: true
+        contexts:
+          - "Test (1.21)"
+          - "Lint"
+          - "Build"
+      enforce_admins: false
+      required_linear_history: true
+      allow_force_pushes: false
+      allow_deletions: false

@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Project logo and banner (`assets/`)
+- CODE_OF_CONDUCT.md for community guidelines
+- `.github/settings.yml` for repository configuration
+- FUNDING.yml for sponsorship support
+- Architecture documentation (`docs/ARCHITECTURE.md`)
+- Roadmap (`docs/ROADMAP.md`)
+- Enhanced SECURITY.md with detailed reporting and best practices
+
+### Changed
+- Enhanced README with professional banner, trust badges, and better structure
+
+## [2.1.0] - 2025-09-01
+
+### Added
 - LICENSE file (MIT)
 - Unit tests for `core`, `config`, `cost`, and `state` packages
 - `PIVOT_HOME` environment variable for testing and custom config locations
@@ -19,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SECURITY.md policy
 - `.editorconfig` for consistent coding styles
 - Example configuration file (`config.example.yaml`)
+- Dockerfile for container builds
 
 ### Fixed
 - Variable shadowing bug in `executor.go` where `err` was redeclared in worktree block
@@ -26,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ignored errors in `state.go` migrate function
 - Missing error handling in HTTP clients (Ollama and OpenAI planners)
 - HTTP clients now have a 60-second timeout to prevent hanging
+- All golangci-lint issues resolved (errcheck, unused)
 
 ### Changed
 - Improved error messages with proper wrapping (`fmt.Errorf` with `%w`)
