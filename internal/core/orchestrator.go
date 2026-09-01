@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	"pivot/internal/planner"
-	"pivot/internal/state"
+	"github.com/Marwanmorsy999/pivot/internal/planner"
+	"github.com/Marwanmorsy999/pivot/internal/state"
 )
 
 type EventType string
