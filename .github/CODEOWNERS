@@ -1,0 +1,6 @@
+# Default owner for all repository paths.
+* @Marwanmorsy999
+
+# Security-sensitive configuration and workflows.
+/.github/ @Marwanmorsy999
+/SECURITY.md @Marwanmorsy999

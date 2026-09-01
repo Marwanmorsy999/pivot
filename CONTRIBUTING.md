@@ -25,10 +25,11 @@ By participating in this project, you are expected to uphold a respectful and in
 1. Fork the repository and create your branch from `main`.
 2. Make your changes in a focused, single-purpose branch.
 3. Write or update tests for any changed functionality.
-4. Ensure all tests pass: `go test ./...`
-5. Run `go fmt ./...` to format your code.
-6. Update documentation if needed (README, CHANGELOG, etc.).
-7. Open a pull request using the PR template.
+4. Run `go test ./...` and `go test -race ./...` locally.
+5. Run `go fmt ./...` and `go vet ./...` before opening the PR.
+6. Run `golangci-lint run ./...` when available.
+7. Update documentation if needed (README, CHANGELOG, etc.).
+8. Open a pull request using the PR template.
 
 ## Development Setup
 
@@ -36,6 +37,7 @@ By participating in this project, you are expected to uphold a respectful and in
 
 - Go 1.21 or later
 - Git
+- A C compiler/toolchain (required by `github.com/mattn/go-sqlite3`)
 
 ### Getting Started
 
@@ -50,23 +52,28 @@ go mod tidy
 # Run tests
 go test ./...
 
-# Build
-go build -o pivot .
+# Build the CLI
+go build -o pivot ./cmd/pivot
 ```
 
 ### Project Structure
 
 ```
 pivot/
-├── main.go                 # CLI entry point
+├── cmd/
+│   └── pivot/
+│       └── main.go           # CLI entry point
 ├── internal/
-│   ├── config/             # Configuration management
-│   ├── core/               # Graph, executor, orchestrator
-│   ├── cost/               # Token/cost estimation
-│   ├── planner/            # AI planners (Ollama, OpenAI)
-│   ├── state/              # SQLite persistence
-│   ├── tui/                # Terminal UI
-│   └── worktree/           # Git worktree isolation
+│   ├── config/               # Configuration management
+│   ├── core/                 # Graph, executor, orchestrator
+│   ├── cost/                 # Token/cost estimation
+│   ├── planner/              # AI planners (Ollama, OpenAI)
+│   ├── state/                # SQLite persistence
+│   ├── tui/                  # Terminal UI
+│   └── worktree/             # Git worktree isolation
+├── docs/                     # Architecture, roadmap, proofs
+├── examples/                 # Usage examples
+└── scripts/                  # Development/release helpers
 ```
 
 ## Coding Standards
@@ -114,6 +121,7 @@ Types:
 - `chore`: Maintenance tasks
 
 Example:
+
 ```
 feat: add support for Anthropic Claude planner
 
@@ -121,12 +129,17 @@ Implements a new planner using the Anthropic API with
 proper error handling and timeout configuration.
 ```
 
-## Release Process
+## Branch and Release Process
 
-1. Update CHANGELOG.md with the new version's changes
-2. Create a git tag: `git tag v2.1.0`
-3. Push the tag: `git push origin v2.1.0`
-4. GitHub Actions will build and create a release
+Use a lightweight GitHub Flow:
+
+1. Create a focused feature or fix branch from `main`.
+2. Open a pull request and wait for CI/security checks to pass.
+3. Merge using a single linear history where practical.
+4. Create version tags in the form `vX.Y.Z` for releases.
+5. Pushing a `v*` tag triggers the release workflow.
+
+Before releasing, update `CHANGELOG.md` and verify the release artifacts and SBOM.
 
 ## Questions?
 
