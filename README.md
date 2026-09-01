@@ -34,6 +34,25 @@ PIVOT bridges the gap between AI agents and traditional command-line tools. Inst
 | **Multi-Provider** | Support for Ollama, OpenAI, Groq, Gemini, and Anthropic |
 | **Dependency Graph** | Tasks declare dependencies and execute in topological order |
 
+## Runs Everywhere — Super Easy
+
+PIVOT is built with Go (1.21+) and runs on Windows, macOS, Linux, and inside Docker. No complex setup needed — just clone, build, or download the binary.
+
+```bash
+# One-line detect + init (auto-configures everything)
+pivot detect
+pivot init
+```
+
+**Supported platforms:**
+- Windows (`pivot.exe` / `go build`)
+- macOS / Linux (`go install` or binary)
+- Docker (`docker build -t pivot .` / `docker run ...`)
+
+See terminal proof shots: [docs/proofs/](docs/proofs/)
+
+---
+
 ## Quick Start
 
 ```bash
@@ -176,6 +195,38 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines.
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Terminal Proof Shots
+
+**Auto-detect all providers and local setup:**
+
+```
+$ pivot detect
+🔍 Pivot Auto-Detection Report
+──────────────────────────────
+AI Providers Found:
+  ✅ ollama
+Local Tools Detected:
+  ✅ docker  ✅ node  ✅ python3  ✅ kubectl  ✅ npm  ✅ curl  ✅ git  ✅ python  ✅ go  ✅ docker-compose
+──────────────────────────────
+🏆 Best Provider: ollama (model: llama3.2:3b)
+🔌 Endpoint: http://localhost:11434
+```
+
+**Super easy init (auto-configured):**
+
+```
+$ pivot init
+✅ Detected providers & local setup automatically.
+🔍 AI Provider: ollama | Model: llama3.2:3b
+🔌 Endpoint: http://localhost:11434
+🛠 Local Tools Found: 10 (git=true docker=true node=true python=true)
+✅ Initialized ~/.pivot/config.yaml (auto-detected)
+```
+
+Proof files: [docs/proofs/detect-output.txt](docs/proofs/detect-output.txt) · [docs/proofs/init-output.txt](docs/proofs/init-output.txt)
+
+---
 
 ## Acknowledgments
 
