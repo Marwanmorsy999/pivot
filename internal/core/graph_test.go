@@ -1,9 +1,10 @@
 package core
 
 import (
-	"github.com/Marwanmorsy999/pivot/internal/planner"
 	"reflect"
 	"testing"
+
+	"github.com/Marwanmorsy999/pivot/internal/planner"
 )
 
 func TestGraphOrder_Linear(t *testing.T) {
