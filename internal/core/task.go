@@ -1,6 +1,6 @@
 package core
 
-import "pivot/internal/planner"
+import "github.com/Marwanmorsy999/pivot/internal/planner"
 
 type Task struct {
 	planner.Task
