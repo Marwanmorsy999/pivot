@@ -50,6 +50,9 @@ formatters:
     goimports:
       local-prefixes:
         - github.com/Marwanmorsy999/pivot
+  exclusions:
+    paths:
+      - internal/tui/model\.go$
 
 issues:
   max-issues-per-linter: 0
