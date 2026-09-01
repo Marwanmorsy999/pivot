@@ -13,7 +13,6 @@ concurrency:
 
 permissions:
   contents: read
-  checks: write
 
 jobs:
   test:
@@ -114,3 +113,16 @@ jobs:
         uses: securego/gosec@v2.29.0
         with:
           args: -severity high -confidence high ./...
+
+  govulncheck:
+    name: Go Vulnerability Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Run govulncheck
+        uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1.1.0
+        with:
+          go-version-input: '1.27'
+          go-package: ./...
+          repo-checkout: false
