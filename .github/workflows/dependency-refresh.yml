@@ -1,0 +1,40 @@
+name: Dependency checksum refresh
+
+on:
+  push:
+    branches: [chore/dependency-modernization]
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27'
+
+      - name: Restore baseline go.sum and regenerate
+        run: |
+          git fetch origin main --depth=1
+          git checkout origin/main -- go.sum
+          go mod tidy
+
+      - name: Commit generated module metadata
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add go.mod go.sum
+          git rm .github/workflows/dependency-refresh.yml
+          if git diff --cached --quiet; then
+            echo 'No dependency metadata changes detected.'
+            exit 0
+          fi
+          git commit -m 'chore(deps): regenerate module checksums'
+          git push origin HEAD:chore/dependency-modernization
