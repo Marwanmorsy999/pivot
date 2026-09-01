@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -62,12 +63,19 @@ func defaultConfig() *Config {
 func SaveDefault() error {
 	home, _ := pivotHome()
 	dir := filepath.Join(home, ".pivot")
-	os.MkdirAll(dir, 0755)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
 	path := filepath.Join(dir, "config.yaml")
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		cfg := defaultConfig()
-		data, _ := yaml.Marshal(cfg)
-		return os.WriteFile(path, data, 0644)
+		data, err := yaml.Marshal(cfg)
+		if err != nil {
+			return fmt.Errorf("marshal config: %w", err)
+		}
+		if err := os.WriteFile(path, data, 0644); err != nil {
+			return fmt.Errorf("write config: %w", err)
+		}
 	}
 	return nil
 }

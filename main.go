@@ -190,7 +190,9 @@ func main() {
 			}()
 
 			tuiModel := tui.NewModel(sessionID, goal, tasks, eventCh)
-			tuiModel.Run()
+			if err := tuiModel.Run(); err != nil {
+				fmt.Printf("❌ TUI error: %v\n", err)
+			}
 		},
 	}
 

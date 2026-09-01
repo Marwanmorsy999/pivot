@@ -64,7 +64,11 @@ func (e *Executor) Execute(ctx <-chan struct{}, task *Task, eventCh chan Event) 
 				task.Status = "failed"
 				return fmt.Errorf("worktree creation failed: %w", wtErr)
 			}
-			defer worktree.Cleanup(wt)
+			defer func() {
+				if err := worktree.Cleanup(wt); err != nil {
+					fmt.Fprintf(os.Stderr, "worktree cleanup warning: %v\n", err)
+				}
+			}()
 
 			cmd := exec.Command(task.Tool, append(args, "--cwd", wt)...)
 			cmd.Stderr = os.Stderr
@@ -90,7 +94,7 @@ func (e *Executor) Execute(ctx <-chan struct{}, task *Task, eventCh chan Event) 
 		task.Error = err.Error()
 		task.EndTime = time.Now().UnixMilli()
 		eventCh <- Event{Type: EventTaskUpdate, TaskID: task.ID, Status: "failed", Output: outputStr, Error: err.Error()}
-		e.State.Log(state.JournalEntry{
+		if logErr := e.State.Log(state.JournalEntry{
 			SessionID: e.SessionID,
 			TaskID:    task.ID,
 			Tool:      task.Tool,
@@ -100,7 +104,9 @@ func (e *Executor) Execute(ctx <-chan struct{}, task *Task, eventCh chan Event) 
 			Status:    "failed",
 			Cost:      costUSD,
 			Tokens:    tokenCount,
-		})
+		}); logErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to log task failure: %v\n", logErr)
+		}
 		return err
 	}
 
@@ -110,7 +116,7 @@ func (e *Executor) Execute(ctx <-chan struct{}, task *Task, eventCh chan Event) 
 	e.Outputs[task.ID] = outputStr
 	eventCh <- Event{Type: EventTaskUpdate, TaskID: task.ID, Status: "completed", Output: outputStr}
 
-	e.State.Log(state.JournalEntry{
+	if err := e.State.Log(state.JournalEntry{
 		SessionID: e.SessionID,
 		TaskID:    task.ID,
 		Tool:      task.Tool,
@@ -119,6 +125,8 @@ func (e *Executor) Execute(ctx <-chan struct{}, task *Task, eventCh chan Event) 
 		Status:    "completed",
 		Cost:      costUSD,
 		Tokens:    tokenCount,
-	})
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to log task completion: %v\n", err)
+	}
 	return nil
 }

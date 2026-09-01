@@ -9,7 +9,9 @@ import (
 
 func Create() (string, error) {
 	baseDir := filepath.Join(os.TempDir(), "pivot-worktrees")
-	os.MkdirAll(baseDir, 0755)
+	if err := os.MkdirAll(baseDir, 0755); err != nil {
+		return "", fmt.Errorf("create worktree base dir: %w", err)
+	}
 
 	dir, err := os.MkdirTemp(baseDir, "wt-*")
 	if err != nil {

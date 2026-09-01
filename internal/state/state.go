@@ -100,7 +100,9 @@ func (s *State) GetSessions() ([]string, error) {
 	var sessions []string
 	for rows.Next() {
 		var id string
-		rows.Scan(&id)
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan session id: %w", err)
+		}
 		sessions = append(sessions, id)
 	}
 	return sessions, nil
@@ -115,7 +117,9 @@ func (s *State) GetFailedTasks(sessionID string) ([]string, error) {
 	var tasks []string
 	for rows.Next() {
 		var id string
-		rows.Scan(&id)
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan task id: %w", err)
+		}
 		tasks = append(tasks, id)
 	}
 	return tasks, nil

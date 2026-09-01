@@ -10,7 +10,9 @@ func newTestState(t *testing.T) *State {
 	t.Helper()
 	tmpDir := t.TempDir()
 	pivotDir := filepath.Join(tmpDir, ".pivot")
-	os.MkdirAll(pivotDir, 0755)
+	if err := os.MkdirAll(pivotDir, 0755); err != nil {
+		t.Fatalf("failed to create pivot dir: %v", err)
+	}
 	t.Setenv("PIVOT_HOME", tmpDir)
 	s, err := New()
 	if err != nil {
@@ -97,9 +99,15 @@ func TestGetFailedTasks(t *testing.T) {
 	s := newTestState(t)
 	id, _ := s.CreateSession("test")
 
-	s.Log(JournalEntry{SessionID: id, TaskID: "a", Status: "completed"})
-	s.Log(JournalEntry{SessionID: id, TaskID: "b", Status: "failed"})
-	s.Log(JournalEntry{SessionID: id, TaskID: "c", Status: "failed"})
+	if err := s.Log(JournalEntry{SessionID: id, TaskID: "a", Status: "completed"}); err != nil {
+		t.Fatalf("Log error: %v", err)
+	}
+	if err := s.Log(JournalEntry{SessionID: id, TaskID: "b", Status: "failed"}); err != nil {
+		t.Fatalf("Log error: %v", err)
+	}
+	if err := s.Log(JournalEntry{SessionID: id, TaskID: "c", Status: "failed"}); err != nil {
+		t.Fatalf("Log error: %v", err)
+	}
 
 	failed, err := s.GetFailedTasks(id)
 	if err != nil {

@@ -21,10 +21,6 @@ var (
 			Foreground(lipgloss.Color("#7D56F4")).
 			MarginLeft(1)
 
-	statusStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#04B575"))
-
 	pendingStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#626262"))
 

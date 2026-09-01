@@ -40,7 +40,9 @@ func TestLoad_WithConfigFile(t *testing.T) {
 	t.Setenv("PIVOT_HOME", tmpDir)
 
 	pivotDir := filepath.Join(tmpDir, ".pivot")
-	os.MkdirAll(pivotDir, 0755)
+	if err := os.MkdirAll(pivotDir, 0755); err != nil {
+		t.Fatalf("failed to create pivot dir: %v", err)
+	}
 
 	configData := `planner:
   provider: openai
@@ -53,7 +55,9 @@ worktree:
 cost:
   enabled: false
 `
-	os.WriteFile(filepath.Join(pivotDir, "config.yaml"), []byte(configData), 0644)
+	if err := os.WriteFile(filepath.Join(pivotDir, "config.yaml"), []byte(configData), 0644); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
 
 	cfg, err := Load()
 	if err != nil {
