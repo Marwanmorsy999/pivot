@@ -27,8 +27,15 @@ func main() {
 		Use:   "init",
 		Short: "Initialize pivot (config, state DB, discover tools)",
 		Run: func(cmd *cobra.Command, args []string) {
-			config.SaveDefault()
-			s, _ := state.New()
+			if err := config.SaveDefault(); err != nil {
+				fmt.Printf("❌ Failed to save config: %v\n", err)
+				os.Exit(1)
+			}
+			s, err := state.New()
+			if err != nil {
+				fmt.Printf("❌ Failed to initialize state: %v\n", err)
+				os.Exit(1)
+			}
 			defer s.Close()
 			fmt.Println("✅ Initialized ~/.pivot/config.yaml")
 			fmt.Println("✅ Initialized ~/.pivot/state.db")
@@ -53,11 +60,24 @@ func main() {
 				cancel()
 			}()
 
-			cfg, _ := config.Load()
-			s, _ := state.New()
+			cfg, err := config.Load()
+			if err != nil {
+				fmt.Printf("❌ Failed to load config: %v\n", err)
+				return
+			}
+
+			s, err := state.New()
+			if err != nil {
+				fmt.Printf("❌ Failed to initialize state: %v\n", err)
+				return
+			}
 			defer s.Close()
 
-			sessionID, _ := s.CreateSession(goal)
+			sessionID, err := s.CreateSession(goal)
+			if err != nil {
+				fmt.Printf("❌ Failed to create session: %v\n", err)
+				return
+			}
 			fmt.Printf("📝 Session: %s\n", sessionID)
 
 			var p planner.Planner
@@ -119,22 +139,38 @@ func main() {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			sessionID := args[0]
-			s, _ := state.New()
+			s, err := state.New()
+			if err != nil {
+				fmt.Printf("❌ Failed to initialize state: %v\n", err)
+				return
+			}
 			defer s.Close()
 
-			failed, _ := s.GetFailedTasks(sessionID)
+			failed, err := s.GetFailedTasks(sessionID)
+			if err != nil {
+				fmt.Printf("❌ Failed to get failed tasks: %v\n", err)
+				return
+			}
 			if len(failed) == 0 {
 				fmt.Println("✅ No failed tasks to resume.")
 				return
 			}
 
 			fmt.Printf("🔄 Resuming session %s (%d failed tasks)\n", sessionID, len(failed))
-			goal, _ := s.GetGoal(sessionID)
+			goal, err := s.GetGoal(sessionID)
+			if err != nil {
+				fmt.Printf("❌ Failed to get session goal: %v\n", err)
+				return
+			}
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			cfg, _ := config.Load()
+			cfg, err := config.Load()
+			if err != nil {
+				fmt.Printf("❌ Failed to load config: %v\n", err)
+				return
+			}
 			var p planner.Planner
 			if cfg.Planner.Provider == "ollama" {
 				p = &planner.OllamaPlanner{Endpoint: cfg.Planner.Endpoint, Model: cfg.Planner.Model}
@@ -162,9 +198,18 @@ func main() {
 		Use:   "status",
 		Short: "Show recent sessions",
 		Run: func(cmd *cobra.Command, args []string) {
-			s, _ := state.New()
+			s, err := state.New()
+			if err != nil {
+				fmt.Printf("❌ Failed to initialize state: %v\n", err)
+				return
+			}
 			defer s.Close()
-			sessions, _ := s.GetSessions()
+
+			sessions, err := s.GetSessions()
+			if err != nil {
+				fmt.Printf("❌ Failed to get sessions: %v\n", err)
+				return
+			}
 			if len(sessions) == 0 {
 				fmt.Println("No sessions found.")
 				return

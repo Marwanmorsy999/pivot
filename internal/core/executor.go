@@ -59,10 +59,10 @@ func (e *Executor) Execute(ctx <-chan struct{}, task *Task, eventCh chan Event) 
 		output, err = cmd.Output()
 	} else {
 		if task.Worktree {
-			wt, err := worktree.Create()
-			if err != nil {
+			wt, wtErr := worktree.Create()
+			if wtErr != nil {
 				task.Status = "failed"
-				return fmt.Errorf("worktree creation failed: %w", err)
+				return fmt.Errorf("worktree creation failed: %w", wtErr)
 			}
 			defer worktree.Cleanup(wt)
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 type OllamaPlanner struct {
@@ -35,17 +36,31 @@ Goal: "%s"
 JSON:`, goal)
 
 	reqBody := ollamaReq{Model: p.Model, Prompt: prompt, Stream: false, Format: "json"}
-	jsonData, _ := json.Marshal(reqBody)
-	resp, err := http.Post(p.Endpoint+"/api/generate", "application/json", bytes.NewBuffer(jsonData))
+	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Post(p.Endpoint+"/api/generate", "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("request to Ollama: %w", err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
 	var or struct{ Response string `json:"response"` }
-	json.Unmarshal(body, &or)
+	if err := json.Unmarshal(body, &or); err != nil {
+		return nil, fmt.Errorf("unmarshal response: %w", err)
+	}
 
 	var result struct{ Tasks []Task `json:"tasks"` }
-	err = json.Unmarshal([]byte(or.Response), &result)
-	return result.Tasks, err
+	if err := json.Unmarshal([]byte(or.Response), &result); err != nil {
+		return nil, fmt.Errorf("unmarshal tasks: %w", err)
+	}
+	return result.Tasks, nil
 }

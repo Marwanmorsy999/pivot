@@ -11,6 +11,13 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+func pivotHome() (string, error) {
+	if dir := os.Getenv("PIVOT_HOME"); dir != "" {
+		return dir, nil
+	}
+	return os.UserHomeDir()
+}
+
 type JournalEntry struct {
 	SessionID string
 	TaskID    string
@@ -28,7 +35,7 @@ type State struct {
 }
 
 func New() (*State, error) {
-	home, _ := os.UserHomeDir()
+	home, _ := pivotHome()
 	path := filepath.Join(home, ".pivot", "state.db")
 	db, err := sql.Open("sqlite3", path)
 	if err != nil {
@@ -40,7 +47,7 @@ func New() (*State, error) {
 }
 
 func (s *State) migrate() {
-	s.db.Exec(`
+	_, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS sessions (
 			id TEXT PRIMARY KEY,
 			goal TEXT,
@@ -62,6 +69,10 @@ func (s *State) migrate() {
 			FOREIGN KEY (session_id) REFERENCES sessions(id)
 		);
 	`)
+	if err != nil {
+		// Log but don't panic; the app will fail gracefully on subsequent DB ops
+		fmt.Fprintf(os.Stderr, "state migration error: %v\n", err)
+	}
 }
 
 func (s *State) Close() error {

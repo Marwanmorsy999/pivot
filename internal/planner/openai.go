@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 type OpenAPlanner struct {
@@ -39,30 +40,45 @@ Goal: "%s"`, goal)
 		},
 		"response_format": map[string]string{"type": "json_object"},
 	}
-	jsonData, _ := json.Marshal(body)
-	req, _ := http.NewRequest("POST", p.Endpoint, bytes.NewBuffer(jsonData))
+	jsonData, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", p.Endpoint, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
 	req.Header.Set("Authorization", "Bearer "+p.APIKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("request to API: %w", err)
 	}
 	defer resp.Body.Close()
-	resBody, _ := io.ReadAll(resp.Body)
+
+	resBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
 
 	var wrapper struct {
 		Choices []struct {
 			Message struct{ Content string `json:"content"` } `json:"message"`
 		} `json:"choices"`
 	}
-	json.Unmarshal(resBody, &wrapper)
+	if err := json.Unmarshal(resBody, &wrapper); err != nil {
+		return nil, fmt.Errorf("unmarshal response: %w", err)
+	}
 	if len(wrapper.Choices) == 0 {
-		return nil, fmt.Errorf("no response")
+		return nil, fmt.Errorf("no response choices from API")
 	}
 
 	var result struct{ Tasks []Task `json:"tasks"` }
-	err = json.Unmarshal([]byte(wrapper.Choices[0].Message.Content), &result)
-	return result.Tasks, err
+	if err := json.Unmarshal([]byte(wrapper.Choices[0].Message.Content), &result); err != nil {
+		return nil, fmt.Errorf("unmarshal tasks: %w", err)
+	}
+	return result.Tasks, nil
 }

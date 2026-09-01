@@ -23,8 +23,15 @@ type Config struct {
 	} `yaml:"cost"`
 }
 
+func pivotHome() (string, error) {
+	if dir := os.Getenv("PIVOT_HOME"); dir != "" {
+		return dir, nil
+	}
+	return os.UserHomeDir()
+}
+
 func Load() (*Config, error) {
-	home, _ := os.UserHomeDir()
+	home, _ := pivotHome()
 	path := filepath.Join(home, ".pivot", "config.yaml")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -53,7 +60,7 @@ func defaultConfig() *Config {
 }
 
 func SaveDefault() error {
-	home, _ := os.UserHomeDir()
+	home, _ := pivotHome()
 	dir := filepath.Join(home, ".pivot")
 	os.MkdirAll(dir, 0755)
 	path := filepath.Join(dir, "config.yaml")

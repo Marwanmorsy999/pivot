@@ -1,0 +1,22 @@
+# PIVOT Configuration Example
+# Copy this file to ~/.pivot/config.yaml and customize
+
+planner:
+  # Provider: ollama, openai, groq, gemini, anthropic
+  provider: ollama
+  # Model name (provider-specific)
+  model: llama3.2:3b
+  # API key (required for openai, groq, gemini, anthropic)
+  api_key: ""
+  # API endpoint (leave empty for defaults)
+  endpoint: http://localhost:11434
+
+worktree:
+  # Enable git worktree isolation for agent tasks
+  enabled: false
+  # Base directory for worktrees (defaults to temp dir)
+  base_dir: ""
+
+cost:
+  # Enable cost tracking
+  enabled: true

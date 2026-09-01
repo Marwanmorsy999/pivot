@@ -1,5 +1,10 @@
 # PIVOT v2.0 — The Hybrid CLI Orchestrator
 
+[![CI](https://github.com/Marwanmorsy999/pivot/actions/workflows/ci.yml/badge.svg)](https://github.com/Marwanmorsy999/pivot/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/Marwanmorsy999/pivot)](https://goreportcard.com/report/github.com/Marwanmorsy999/pivot)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Go Version](https://img.shields.io/badge/go-1.21+-blue.svg)](https://golang.org)
+
 A universal hybrid CLI orchestrator that combines AI agents and traditional CLI tools in a single workflow, with a real-time TUI, worktree isolation, cost tracking, and a plugin-ready architecture.
 
 ## Features
@@ -14,10 +19,26 @@ A universal hybrid CLI orchestrator that combines AI agents and traditional CLI 
 
 ## Installation
 
+### From Source
+
 ```bash
+git clone https://github.com/Marwanmorsy999/pivot.git
 cd pivot
 go mod tidy
-go build -o pivot.exe
+go build -o pivot .
+```
+
+### Using Go Install
+
+```bash
+go install github.com/Marwanmorsy999/pivot@latest
+```
+
+### Using Docker
+
+```bash
+docker build -t pivot .
+docker run -it --rm -v ~/.pivot:/root/.pivot pivot run "your goal"
 ```
 
 ## Quick Start
@@ -54,6 +75,8 @@ worktree:
 cost:
   enabled: true
 ```
+
+See [config.example.yaml](config.example.yaml) for a full example.
 
 ## Architecture
 
@@ -101,6 +124,21 @@ The planner generates a JSON task graph:
 }
 ```
 
+## Development
+
+```bash
+# Run tests
+make test
+
+# Run linter
+make lint
+
+# Build for all platforms
+make build-all
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
+
 ## License
 
-MIT
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
