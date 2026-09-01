@@ -46,19 +46,25 @@ JSON:`, goal)
 	if err != nil {
 		return nil, fmt.Errorf("request to Ollama: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 
-	var or struct{ Response string `json:"response"` }
+	var or struct {
+		Response string `json:"response"`
+	}
 	if err := json.Unmarshal(body, &or); err != nil {
 		return nil, fmt.Errorf("unmarshal response: %w", err)
 	}
 
-	var result struct{ Tasks []Task `json:"tasks"` }
+	var result struct {
+		Tasks []Task `json:"tasks"`
+	}
 	if err := json.Unmarshal([]byte(or.Response), &result); err != nil {
 		return nil, fmt.Errorf("unmarshal tasks: %w", err)
 	}
