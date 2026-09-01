@@ -1,31 +1,55 @@
-# Binaries
-pivot
-pivot.exe
-dist/
+```
+# Dependencies
+node_modules/
+vendor/
 
-# Environment
+# Build artifacts
+dist/
+build/
+target/
+
+# Go specific
+*.o
+*.a
+*.so
+*.exe
+*.dll
+*.dylib
+*.test
+*_test.go
+
+# Environment files
 .env
 .env.local
+.env.*
 
-# Database
-*.db
-*.db-journal
-*.db-wal
-*.db-shm
+# Logs
+*.log
 
-# OS
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# OS generated files
 .DS_Store
 Thumbs.db
 
-# IDE
+# Editors
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Test coverage
-coverage.out
-coverage.html
+# Coverage
+coverage/
+htmlcov/
+.coverage
 
-# Go
-vendor/
+# Python cache (if present)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+```
