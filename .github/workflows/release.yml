@@ -8,8 +8,6 @@ on:
 
 permissions:
   contents: write
-  packages: write
-  id-token: write
 
 jobs:
   test:
@@ -71,6 +69,16 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/}
           go build -ldflags="-s -w -X main.version=${VERSION}" -o "${{ matrix.BINARY }}" ./cmd/pivot
 
+      - name: Smoke test binary
+        if: matrix.GOOS != 'windows'
+        shell: bash
+        run: ./"${{ matrix.BINARY }}" --help
+
+      - name: Smoke test Windows binary
+        if: matrix.GOOS == 'windows'
+        shell: pwsh
+        run: .\"${{ matrix.BINARY }}" --help
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
@@ -106,7 +114,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Download all artifacts
+      - name: Download release binaries
         uses: actions/download-artifact@v8
         with:
           pattern: pivot-*
@@ -117,12 +125,34 @@ jobs:
         with:
           name: sbom
 
+      - name: Validate release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=(
+            pivot-linux-amd64
+            pivot-darwin-amd64
+            pivot-darwin-arm64
+            pivot-windows-amd64.exe
+          )
+          for artifact in "${expected[@]}"; do
+            test -f "$artifact"
+            test -s "$artifact"
+          done
+          test -s pivot.sbom.spdx.json
+          test "$(find . -maxdepth 1 -type f -name 'pivot-*' | wc -l)" -eq "${#expected[@]}"
+
+      - name: Generate SHA256 checksums
+        shell: bash
+        run: sha256sum pivot-* > SHA256SUMS
+
       - name: Create Release
         uses: softprops/action-gh-release@v3
         with:
           files: |
             pivot-*
             *.spdx.json
+            SHA256SUMS
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-alpha') || contains(github.ref, '-beta') }}
