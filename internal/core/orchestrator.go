@@ -65,6 +65,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		taskMap[t.ID] = t
 	}
 
+	var firstErr error
 	for _, id := range order {
 		select {
 		case <-ctx.Done():
@@ -86,20 +87,33 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		}
 
 		mu.Lock()
+		depFailed := false
 		for _, depID := range task.DependsOn {
 			depTask := taskMap[depID]
 			if depTask.Status == "failed" {
-				err := fmt.Errorf("dependency %s failed, skipping %s", depID, id)
+				depFailed = true
+				skipErr := fmt.Errorf("dependency %s failed, skipping %s", depID, id)
 				task.Status = "skipped"
-				o.eventCh <- Event{Type: EventTaskUpdate, TaskID: id, Status: "skipped", Error: err.Error()}
-				mu.Unlock()
-				return err
+				o.eventCh <- Event{Type: EventTaskUpdate, TaskID: id, Status: "skipped", Error: skipErr.Error()}
+				if firstErr == nil {
+					firstErr = skipErr
+				}
+				break
 			}
 		}
 		mu.Unlock()
 
+		if depFailed {
+			// continue to next task — don't abort independent branches
+			continue
+		}
+
 		if err := executor.Execute(ctx.Done(), task, o.eventCh); err != nil {
-			return err
+			if firstErr == nil {
+				firstErr = err
+			}
+			// continue: let independent tasks still run
+			continue
 		}
 	}
 
@@ -112,5 +126,5 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		Message: fmt.Sprintf("✅ Completed! Total cost: $%.6f, Tokens: %d", totalCost, totalTokens),
 	}
 
-	return nil
+	return firstErr
 }
