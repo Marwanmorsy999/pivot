@@ -121,7 +121,7 @@ func (r *DetectionResult) pickBestProvider() {
 	if r.Providers["anthropic"] {
 		r.DetectedProvider = "anthropic"
 		r.DetectedModel = "claude-3-5-sonnet-20241022"
-		r.DetectedEndpoint = "https://api.anthropic.com/v1/chat/completions"
+		r.DetectedEndpoint = "https://api.anthropic.com/v1/messages"
 		return
 	}
 	if r.Providers["openai"] {
