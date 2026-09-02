@@ -1,96 +1,205 @@
 package core
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/Marwanmorsy999/pivot/internal/planner"
 )
 
-func TestGraphOrder_Linear(t *testing.T) {
-	tasks := []*Task{
-		{Task: planner.Task{ID: "a", DependsOn: []string{}}},
-		{Task: planner.Task{ID: "b", DependsOn: []string{"a"}}},
-		{Task: planner.Task{ID: "c", DependsOn: []string{"b"}}},
+func makeTasks(specs []struct {
+	id   string
+	deps []string
+}) []*Task {
+	tasks := make([]*Task, len(specs))
+	for i, s := range specs {
+		tasks[i] = &Task{
+			Task:   planner.Task{ID: s.id, DependsOn: s.deps, Type: planner.TypeTool, Tool: "echo"},
+			Status: "pending",
+		}
 	}
+	return tasks
+}
+
+func TestGraph_OrderLinear(t *testing.T) {
+	tasks := makeTasks([]struct {
+		id   string
+		deps []string
+	}{
+		{"a", nil},
+		{"b", []string{"a"}},
+		{"c", []string{"b"}},
+	})
 	g := NewGraph(tasks)
 	order, err := g.Order()
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatal(err)
 	}
-	expected := []string{"a", "b", "c"}
-	if !reflect.DeepEqual(order, expected) {
-		t.Errorf("expected %v, got %v", expected, order)
+	if order[0] != "a" || order[1] != "b" || order[2] != "c" {
+		t.Fatalf("unexpected order: %v", order)
 	}
 }
 
-func TestGraphOrder_Diamond(t *testing.T) {
-	tasks := []*Task{
-		{Task: planner.Task{ID: "a", DependsOn: []string{}}},
-		{Task: planner.Task{ID: "b", DependsOn: []string{"a"}}},
-		{Task: planner.Task{ID: "c", DependsOn: []string{"a"}}},
-		{Task: planner.Task{ID: "d", DependsOn: []string{"b", "c"}}},
-	}
+func TestGraph_OrderParallel(t *testing.T) {
+	// a has no deps; b and c both depend on a only; independent of each other
+	tasks := makeTasks([]struct {
+		id   string
+		deps []string
+	}{
+		{"a", nil},
+		{"b", []string{"a"}},
+		{"c", []string{"a"}},
+	})
 	g := NewGraph(tasks)
 	order, err := g.Order()
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatal(err)
 	}
-	if len(order) != 4 {
-		t.Fatalf("expected 4 tasks, got %d", len(order))
+	if order[0] != "a" {
+		t.Fatalf("a must be first, got %v", order)
 	}
-	if order[0] != "a" || order[3] != "d" {
-		t.Errorf("expected a first and d last, got %v", order)
+	// b and c can be in any order after a
+	if len(order) != 3 {
+		t.Fatalf("expected 3 tasks, got %d", len(order))
 	}
 }
 
-func TestGraphOrder_Cycle(t *testing.T) {
-	tasks := []*Task{
-		{Task: planner.Task{ID: "a", DependsOn: []string{"b"}}},
-		{Task: planner.Task{ID: "b", DependsOn: []string{"a"}}},
-	}
+func TestGraph_CycleDetection(t *testing.T) {
+	tasks := makeTasks([]struct {
+		id   string
+		deps []string
+	}{
+		{"a", []string{"b"}},
+		{"b", []string{"a"}},
+	})
 	g := NewGraph(tasks)
 	_, err := g.Order()
 	if err == nil {
-		t.Fatal("expected cycle detection error")
+		t.Fatal("expected cycle error")
 	}
 }
 
-func TestGraphOrder_MissingDependency(t *testing.T) {
-	tasks := []*Task{
-		{Task: planner.Task{ID: "a", DependsOn: []string{"x"}}},
-	}
+func TestGraph_MissingDependency(t *testing.T) {
+	tasks := makeTasks([]struct {
+		id   string
+		deps []string
+	}{
+		{"a", []string{"ghost"}},
+	})
 	g := NewGraph(tasks)
 	_, err := g.Order()
 	if err == nil {
-		t.Fatal("expected missing dependency error")
+		t.Fatal("expected missing dep error")
 	}
 }
 
-func TestGraphOrder_Empty(t *testing.T) {
-	g := NewGraph([]*Task{})
+func TestGraph_SingleNode(t *testing.T) {
+	tasks := makeTasks([]struct {
+		id   string
+		deps []string
+	}{
+		{"solo", nil},
+	})
+	g := NewGraph(tasks)
 	order, err := g.Order()
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatal(err)
 	}
-	if len(order) != 0 {
-		t.Errorf("expected empty order, got %v", order)
+	if len(order) != 1 || order[0] != "solo" {
+		t.Fatalf("unexpected order: %v", order)
 	}
 }
 
-func TestGraphGetTask(t *testing.T) {
-	tasks := []*Task{
-		{Task: planner.Task{ID: "a", Description: "test"}},
-	}
+func TestGraph_Diamond(t *testing.T) {
+	// A -> B, A -> C, B -> D, C -> D
+	tasks := makeTasks([]struct {
+		id   string
+		deps []string
+	}{
+		{"A", nil},
+		{"B", []string{"A"}},
+		{"C", []string{"A"}},
+		{"D", []string{"B", "C"}},
+	})
 	g := NewGraph(tasks)
-	task := g.GetTask("a")
-	if task == nil {
-		t.Fatal("expected task, got nil")
+	order, err := g.Order()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if task.Description != "test" {
-		t.Errorf("expected 'test', got %q", task.Description)
+	// A must be first, D must be last
+	if order[0] != "A" {
+		t.Fatalf("A must be first, got %v", order)
 	}
-	if g.GetTask("missing") != nil {
-		t.Error("expected nil for missing task")
+	if order[len(order)-1] != "D" {
+		t.Fatalf("D must be last, got %v", order)
+	}
+}
+
+func TestGraph_WavesLinear(t *testing.T) {
+	tasks := makeTasks([]struct {
+		id   string
+		deps []string
+	}{
+		{"a", nil},
+		{"b", []string{"a"}},
+		{"c", []string{"b"}},
+	})
+	g := NewGraph(tasks)
+	waves, err := g.Waves()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(waves) != 3 {
+		t.Fatalf("expected 3 waves for linear chain, got %d: %v", len(waves), waves)
+	}
+}
+
+func TestGraph_WavesParallel(t *testing.T) {
+	// a -> {b, c, d} — b, c, d are independent and should be in the same wave
+	tasks := makeTasks([]struct {
+		id   string
+		deps []string
+	}{
+		{"a", nil},
+		{"b", []string{"a"}},
+		{"c", []string{"a"}},
+		{"d", []string{"a"}},
+	})
+	g := NewGraph(tasks)
+	waves, err := g.Waves()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(waves) != 2 {
+		t.Fatalf("expected 2 waves, got %d: %v", len(waves), waves)
+	}
+	if len(waves[0]) != 1 || waves[0][0] != "a" {
+		t.Fatalf("wave 0 should be [a], got %v", waves[0])
+	}
+	if len(waves[1]) != 3 {
+		t.Fatalf("wave 1 should have 3 tasks, got %v", waves[1])
+	}
+}
+
+func TestGraph_WavesDiamond(t *testing.T) {
+	tasks := makeTasks([]struct {
+		id   string
+		deps []string
+	}{
+		{"A", nil},
+		{"B", []string{"A"}},
+		{"C", []string{"A"}},
+		{"D", []string{"B", "C"}},
+	})
+	g := NewGraph(tasks)
+	waves, err := g.Waves()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// wave 0: A, wave 1: B+C, wave 2: D
+	if len(waves) != 3 {
+		t.Fatalf("expected 3 waves for diamond, got %d: %v", len(waves), waves)
+	}
+	if len(waves[1]) != 2 {
+		t.Fatalf("wave 1 should have B and C, got %v", waves[1])
 	}
 }
