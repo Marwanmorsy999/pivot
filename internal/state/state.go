@@ -2,22 +2,17 @@ package state
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
+	"github.com/Marwanmorsy999/pivot/internal/paths"
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func pivotHome() (string, error) {
-	if dir := os.Getenv("PIVOT_HOME"); dir != "" {
-		return dir, nil
-	}
-	return os.UserHomeDir()
-}
-
+// JournalEntry represents a single logged task execution.
 type JournalEntry struct {
 	SessionID string
 	TaskID    string
@@ -30,20 +25,20 @@ type JournalEntry struct {
 	Tokens    int
 }
 
+// State manages persistent session and task data in SQLite.
 type State struct {
 	db *sql.DB
 }
 
 func New() (*State, error) {
-	home, err := pivotHome()
+	stateFile, err := paths.StateFile()
 	if err != nil {
-		return nil, fmt.Errorf("resolve pivot home: %w", err)
+		return nil, fmt.Errorf("resolve state path: %w", err)
 	}
-	path := filepath.Join(home, ".pivot", "state.db") // #nosec G304 -- PIVOT_HOME is an explicit user-configured data directory.
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(stateFile), 0700); err != nil {
 		return nil, fmt.Errorf("create state directory: %w", err)
 	}
-	db, err := sql.Open("sqlite3", path)
+	db, err := sql.Open("sqlite3", stateFile)
 	if err != nil {
 		return nil, err
 	}
@@ -60,6 +55,7 @@ func (s *State) migrate() error {
 		CREATE TABLE IF NOT EXISTS sessions (
 			id TEXT PRIMARY KEY,
 			goal TEXT,
+			tasks_json TEXT,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			status TEXT DEFAULT 'active'
 		);
@@ -68,7 +64,7 @@ func (s *State) migrate() error {
 			session_id TEXT,
 			task_id TEXT,
 			tool TEXT,
-			args TEXT,
+			args_json TEXT,
 			output TEXT,
 			error TEXT,
 			status TEXT,
@@ -77,6 +73,10 @@ func (s *State) migrate() error {
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (session_id) REFERENCES sessions(id)
 		);
+		CREATE INDEX IF NOT EXISTS idx_journal_session_task
+			ON journal(session_id, task_id);
+		CREATE INDEX IF NOT EXISTS idx_journal_session_status
+			ON journal(session_id, status);
 	`)
 	if err != nil {
 		return fmt.Errorf("state migration: %w", err)
@@ -84,14 +84,32 @@ func (s *State) migrate() error {
 	return nil
 }
 
-func (s *State) Close() error {
-	return s.db.Close()
-}
+func (s *State) Close() error { return s.db.Close() }
 
+// CreateSession creates a new session and returns its ID.
 func (s *State) CreateSession(goal string) (string, error) {
 	id := fmt.Sprintf("sess_%d", time.Now().UnixNano())
 	_, err := s.db.Exec("INSERT INTO sessions (id, goal) VALUES (?, ?)", id, goal)
 	return id, err
+}
+
+// SaveSessionTasks persists the task plan JSON so resume doesn't need to re-plan.
+func (s *State) SaveSessionTasks(sessionID string, tasksJSON []byte) error {
+	_, err := s.db.Exec("UPDATE sessions SET tasks_json = ? WHERE id = ?", string(tasksJSON), sessionID)
+	return err
+}
+
+// GetSessionTasks retrieves the persisted task plan JSON (nil if not saved).
+func (s *State) GetSessionTasks(sessionID string) ([]byte, error) {
+	var raw sql.NullString
+	err := s.db.QueryRow("SELECT tasks_json FROM sessions WHERE id = ?", sessionID).Scan(&raw)
+	if err != nil {
+		return nil, err
+	}
+	if !raw.Valid || raw.String == "" {
+		return nil, nil
+	}
+	return []byte(raw.String), nil
 }
 
 func (s *State) GetGoal(sessionID string) (string, error) {
@@ -105,9 +123,7 @@ func (s *State) GetSessions() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		_ = rows.Close()
-	}()
+	defer func() { _ = rows.Close() }()
 	var sessions []string
 	for rows.Next() {
 		var id string
@@ -116,20 +132,18 @@ func (s *State) GetSessions() ([]string, error) {
 		}
 		sessions = append(sessions, id)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate sessions: %w", err)
-	}
-	return sessions, nil
+	return sessions, rows.Err()
 }
 
 func (s *State) GetFailedTasks(sessionID string) ([]string, error) {
-	rows, err := s.db.Query("SELECT task_id FROM journal WHERE session_id = ? AND status = 'failed'", sessionID)
+	rows, err := s.db.Query(
+		"SELECT DISTINCT task_id FROM journal WHERE session_id = ? AND status = 'failed'",
+		sessionID,
+	)
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		_ = rows.Close()
-	}()
+	defer func() { _ = rows.Close() }()
 	var tasks []string
 	for rows.Next() {
 		var id string
@@ -138,23 +152,30 @@ func (s *State) GetFailedTasks(sessionID string) ([]string, error) {
 		}
 		tasks = append(tasks, id)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate failed tasks: %w", err)
-	}
-	return tasks, nil
+	return tasks, rows.Err()
 }
 
 func (s *State) IsTaskCompleted(sessionID, taskID string) (bool, error) {
 	var count int
-	err := s.db.QueryRow("SELECT COUNT(*) FROM journal WHERE session_id = ? AND task_id = ? AND status = 'completed'", sessionID, taskID).Scan(&count)
+	err := s.db.QueryRow(
+		"SELECT COUNT(*) FROM journal WHERE session_id = ? AND task_id = ? AND status = 'completed'",
+		sessionID, taskID,
+	).Scan(&count)
 	return count > 0, err
 }
 
+// Log records a task execution journal entry. Args are stored as JSON.
 func (s *State) Log(entry JournalEntry) error {
-	argsStr := strings.Join(entry.Args, " ")
-	_, err := s.db.Exec(
-		"INSERT INTO journal (session_id, task_id, tool, args, output, error, status, cost, tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		entry.SessionID, entry.TaskID, entry.Tool, argsStr, entry.Output, entry.Error, entry.Status, entry.Cost, entry.Tokens,
+	argsJSON, err := json.Marshal(entry.Args)
+	if err != nil {
+		return fmt.Errorf("marshal args: %w", err)
+	}
+	_, err = s.db.Exec(
+		`INSERT INTO journal
+			(session_id, task_id, tool, args_json, output, error, status, cost, tokens)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		entry.SessionID, entry.TaskID, entry.Tool, string(argsJSON),
+		entry.Output, entry.Error, entry.Status, entry.Cost, entry.Tokens,
 	)
 	return err
 }

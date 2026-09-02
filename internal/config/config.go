@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Marwanmorsy999/pivot/internal/paths"
 	"gopkg.in/yaml.v3"
 )
 
@@ -27,7 +28,7 @@ type Config struct {
 	} `yaml:"cost"`
 }
 
-// Detection report for providers and local setup
+// DetectionResult holds auto-detected providers and local tools.
 type DetectionResult struct {
 	Providers        map[string]bool `yaml:"providers"`
 	LocalTools       map[string]bool `yaml:"local_tools"`
@@ -42,38 +43,29 @@ func Detect() *DetectionResult {
 		Providers:  make(map[string]bool),
 		LocalTools: make(map[string]bool),
 	}
-
-	// Detect AI providers
 	r.detectProviders()
-	// Detect local tools/setup
 	r.detectLocalTools()
-
-	// Pick best detected provider
 	r.pickBestProvider()
 	return r
 }
 
 func (r *DetectionResult) detectProviders() {
-	// OpenAI
 	if k := os.Getenv("OPENAI_API_KEY"); k != "" {
 		r.Providers["openai"] = true
 		r.DetectedAPIKey = k
 	}
-	// Anthropic
 	if k := os.Getenv("ANTHROPIC_API_KEY"); k != "" {
 		r.Providers["anthropic"] = true
 		if r.DetectedAPIKey == "" {
 			r.DetectedAPIKey = k
 		}
 	}
-	// Groq
 	if k := os.Getenv("GROQ_API_KEY"); k != "" {
 		r.Providers["groq"] = true
 		if r.DetectedAPIKey == "" {
 			r.DetectedAPIKey = k
 		}
 	}
-	// Gemini / Google
 	if k := os.Getenv("GEMINI_API_KEY"); k != "" || os.Getenv("GOOGLE_API_KEY") != "" {
 		r.Providers["gemini"] = true
 		if k == "" {
@@ -83,27 +75,13 @@ func (r *DetectionResult) detectProviders() {
 			r.DetectedAPIKey = k
 		}
 	}
-	// Ollama (local endpoint check)
 	client := &http.Client{Timeout: 500 * time.Millisecond}
 	resp, err := client.Get("http://localhost:11434/api/tags")
 	if err == nil && resp != nil {
 		_ = resp.Body.Close()
 		r.Providers["ollama"] = true
-		if r.DetectedProvider == "" {
-			r.DetectedProvider = "ollama"
-			r.DetectedEndpoint = "http://localhost:11434"
-			r.DetectedModel = "llama3.2:3b"
-		}
-	} else {
-		// Try default ollama endpoint anyway if binary exists
-		if _, err := exec.LookPath("ollama"); err == nil {
-			r.Providers["ollama"] = true
-			if r.DetectedProvider == "" {
-				r.DetectedProvider = "ollama"
-				r.DetectedEndpoint = "http://localhost:11434"
-				r.DetectedModel = "llama3.2:3b"
-			}
-		}
+	} else if _, err := exec.LookPath("ollama"); err == nil {
+		r.Providers["ollama"] = true
 	}
 }
 
@@ -117,10 +95,9 @@ func (r *DetectionResult) detectLocalTools() {
 }
 
 func (r *DetectionResult) pickBestProvider() {
-	// Prefer cloud providers if keys exist, else ollama
 	if r.Providers["anthropic"] {
 		r.DetectedProvider = "anthropic"
-		r.DetectedModel = "claude-3-5-sonnet-20241022"
+		r.DetectedModel = "claude-opus-4-5"
 		r.DetectedEndpoint = "https://api.anthropic.com/v1/messages"
 		return
 	}
@@ -149,32 +126,23 @@ func (r *DetectionResult) pickBestProvider() {
 	}
 }
 
-func pivotHome() (string, error) {
-	if dir := os.Getenv("PIVOT_HOME"); dir != "" {
-		return dir, nil
-	}
-	return os.UserHomeDir()
-}
-
 func Load() (*Config, error) {
-	home, err := pivotHome()
+	cfgFile, err := paths.ConfigFile()
 	if err != nil {
-		return nil, fmt.Errorf("resolve pivot home: %w", err)
+		return nil, fmt.Errorf("resolve config path: %w", err)
 	}
-	path := filepath.Join(home, ".pivot", "config.yaml") // #nosec G304 -- PIVOT_HOME is an explicit user-configured data directory.
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(cfgFile) // #nosec G304 -- PIVOT_HOME is an explicit user-configured data directory
 	if err != nil {
 		return defaultConfig(), nil
 	}
 	var cfg Config
-	err = yaml.Unmarshal(data, &cfg)
-	if err != nil {
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
 	if cfg.Worktree.BaseDir == "" {
 		cfg.Worktree.BaseDir = filepath.Join(os.TempDir(), "pivot-worktrees")
 	}
-	return &cfg, err
+	return &cfg, nil
 }
 
 func defaultConfig() *Config {
@@ -202,7 +170,6 @@ func ConfigFromDetection(r *DetectionResult) *Config {
 	if r.DetectedAPIKey != "" {
 		cfg.Planner.APIKey = r.DetectedAPIKey
 	}
-	// If any cloud provider detected and worktree available, enable it optionally
 	if r.LocalTools["git"] && r.LocalTools["docker"] {
 		cfg.Worktree.Enabled = true
 	}
@@ -210,44 +177,34 @@ func ConfigFromDetection(r *DetectionResult) *Config {
 }
 
 func SaveDetected(cfg *Config) error {
-	home, err := pivotHome()
+	return saveConfig(cfg)
+}
+
+func SaveDefault() error {
+	cfgFile, err := paths.ConfigFile()
 	if err != nil {
-		return fmt.Errorf("resolve pivot home: %w", err)
+		return fmt.Errorf("resolve config path: %w", err)
 	}
-	dir := filepath.Join(home, ".pivot") // #nosec G304 -- PIVOT_HOME is an explicit user-configured data directory.
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("create config dir: %w", err)
-	}
-	path := filepath.Join(dir, "config.yaml") // #nosec G304 -- path is inside the explicit PIVOT_HOME directory.
-	data, err := yaml.Marshal(cfg)
-	if err != nil {
-		return fmt.Errorf("marshal config: %w", err)
-	}
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("write config: %w", err)
+	if _, err := os.Stat(cfgFile); os.IsNotExist(err) {
+		return saveConfig(defaultConfig())
 	}
 	return nil
 }
 
-func SaveDefault() error {
-	home, err := pivotHome()
+func saveConfig(cfg *Config) error {
+	cfgFile, err := paths.ConfigFile()
 	if err != nil {
-		return fmt.Errorf("resolve pivot home: %w", err)
+		return fmt.Errorf("resolve config path: %w", err)
 	}
-	dir := filepath.Join(home, ".pivot") // #nosec G304 -- PIVOT_HOME is an explicit user-configured data directory.
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(cfgFile), 0700); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
-	path := filepath.Join(dir, "config.yaml") // #nosec G304 -- path is inside the explicit PIVOT_HOME directory.
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		cfg := defaultConfig()
-		data, err := yaml.Marshal(cfg)
-		if err != nil {
-			return fmt.Errorf("marshal config: %w", err)
-		}
-		if err := os.WriteFile(path, data, 0600); err != nil {
-			return fmt.Errorf("write config: %w", err)
-		}
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	if err := os.WriteFile(cfgFile, data, 0600); err != nil { // #nosec G306
+		return fmt.Errorf("write config: %w", err)
 	}
 	return nil
 }
