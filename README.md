@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>A universal hybrid CLI orchestrator that combines AI agents and traditional CLI tools in a single workflow</strong>
+  <strong>Hybrid CLI orchestration for AI agents and traditional command-line tools.</strong>
 </p>
 
 <p align="center">
@@ -11,155 +11,117 @@
   <a href="https://github.com/Marwanmorsy999/pivot/actions/workflows/codeql.yml"><img src="https://github.com/Marwanmorsy999/pivot/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"/></a>
   <a href="https://goreportcard.com/report/github.com/Marwanmorsy999/pivot"><img src="https://goreportcard.com/badge/github.com/Marwanmorsy999/pivot" alt="Go Report Card"/></a>
   <a href="https://pkg.go.dev/github.com/Marwanmorsy999/pivot"><img src="https://pkg.go.dev/badge/github.com/Marwanmorsy999/pivot.svg" alt="PkgGoDev"/></a>
-  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"/></a>
-  <a href="https://github.com/Marwanmorsy999/pivot/releases"><img src="https://img.shields.io/github/v/release/Marwanmorsy999/pivot?include_prereleases" alt="Release"/></a>
-  <a href="https://github.com/Marwanmorsy999/pivot/stargazers"><img src="https://img.shields.io/github/stars/Marwanmorsy999/pivot" alt="GitHub Stars"/></a>
+  <a href="https://github.com/Marwanmorsy999/pivot/releases"><img src="https://img.shields.io/github/v/release/Marwanmorsy999/pivot?include_prereleases" alt="Latest release"/></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License"/></a>
 </p>
 
----
+> **Project status:** active development. The latest published release is `v0.1.0-rc.1`. The `main` branch is continuously validated by automated testing, linting, build checks, dependency vulnerability scanning, and CodeQL.
 
-## Why PIVOT?
+## Overview
 
-PIVOT bridges the gap between AI agents and traditional command-line tools. Instead of choosing between automation and intelligence, get both — orchestrated through a single dependency graph with real-time visibility.
+PIVOT is a Go-based CLI orchestrator that combines AI agents with traditional command-line tools inside one dependency-aware workflow. It is designed for repeatable, inspectable automation rather than one-off shell commands.
 
-## Features
+The core execution model is a task graph: tasks can call normal CLI tools or supported AI providers, declare dependencies, and persist session state so work can be inspected and resumed.
 
-| Feature | Description |
-|---------|-------------|
-| **Hybrid Execution** | Seamlessly mix AI agents (Ollama, Claude Code, Gemini CLI) with traditional CLI tools (grep, jq, curl, etc.) |
-| **Real-time TUI** | Beautiful terminal UI with live task tracking, cost monitoring, and event logging |
-| **Worktree Isolation** | Run AI agents in isolated git worktrees to prevent unwanted changes |
-| **Cost Tracking** | Track token usage and estimated costs across all AI operations |
-| **Session Management** | Resume failed or paused sessions with full state persistence |
-| **Multi-Provider** | Support for Ollama, OpenAI, Groq, Gemini, and Anthropic |
-| **Dependency Graph** | Tasks declare dependencies and execute in topological order |
+## What PIVOT Provides
 
-## Runs Everywhere — Super Easy
-
-PIVOT is built with Go (1.21+) and runs on Windows, macOS, Linux, and inside Docker. No complex setup needed — just clone, build, or download the binary.
-
-```bash
-# One-line detect + init (auto-configures everything)
-pivot detect
-pivot init
-```
-
-**Supported platforms:**
-- Windows (`pivot.exe` / `go build`)
-- macOS / Linux (`go install` or binary)
-- Docker (`docker build -t pivot .` / `docker run ...`)
-
-See terminal proof shots: [docs/proofs/](docs/proofs/)
-
----
+| Capability | What it does |
+| --- | --- |
+| **Hybrid execution** | Mix AI agents and conventional CLI commands in one workflow. |
+| **Dependency graph** | Order tasks by explicit dependencies and execute them topologically. |
+| **Terminal UI** | Monitor sessions, tasks, events, and execution progress in a Bubble Tea TUI. |
+| **Worktree isolation** | Run agent work in isolated Git worktrees to reduce accidental repository changes. |
+| **Session persistence** | Store execution state and journals in SQLite and resume interrupted work. |
+| **Cost tracking** | Track token usage and estimated AI costs when provider metadata is available. |
+| **Multi-provider planning** | Support Ollama, OpenAI-compatible endpoints, Groq, Gemini, and Anthropic workflows. |
 
 ## Quick Start
 
-```bash
-# Initialize pivot (creates config and state DB)
-pivot init
+### Build from source
 
-# Run a goal
-pivot run "Find all TODO comments in the codebase and create GitHub issues for them"
-
-# Check status of recent sessions
-pivot status
-
-# Resume a failed session
-pivot resume sess_1234567890
-```
-
-## Installation
-
-### From Source
+PIVOT requires Go `1.21+` and a working C toolchain because it uses `github.com/mattn/go-sqlite3`.
 
 ```bash
 git clone https://github.com/Marwanmorsy999/pivot.git
 cd pivot
-go mod tidy
+go mod download
 go build -o pivot ./cmd/pivot
 ```
 
-### Using Go Install
+### Initialize and run
+
+```bash
+./pivot detect
+./pivot init
+./pivot run "Find all TODO comments in the codebase and summarize the highest-priority items"
+./pivot status
+```
+
+### Install with Go
 
 ```bash
 go install github.com/Marwanmorsy999/pivot/cmd/pivot@latest
 ```
 
-### Using Docker
+### Docker
 
 ```bash
 docker build -t pivot .
 docker run -it --rm -v ~/.pivot:/root/.pivot pivot run "your goal"
 ```
 
-### Using Install Script (macOS/Linux)
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Marwanmorsy999/pivot/main/scripts/install.sh | bash
-```
-
-### Download Pre-built Binaries
-
-Visit the [Releases page](https://github.com/Marwanmorsy999/pivot/releases) for pre-built binaries for:
-- Linux (amd64, arm64)
-- macOS (Intel & Apple Silicon)
-- Windows (amd64, arm64)
+For macOS/Linux, the repository also includes an install script at [`scripts/install.sh`](scripts/install.sh).
 
 ## Configuration
 
-Edit `~/.pivot/config.yaml`:
+PIVOT reads configuration from `~/.pivot/config.yaml` by default.
 
 ```yaml
 planner:
-  provider: ollama  # ollama, openai, groq, gemini, anthropic
+  provider: ollama
   model: llama3.2:3b
-  api_key: ""       # For OpenAI/Groq/Gemini/Anthropic
+  api_key: ""
   endpoint: http://localhost:11434
 
 worktree:
   enabled: false
-  base_dir: ""      # Defaults to temp dir
+  base_dir: ""
 
 cost:
   enabled: true
 ```
 
-See [config.example.yaml](config.example.yaml) for a full example.
+See [`config.example.yaml`](config.example.yaml) for the complete example.
 
 ## Architecture
 
-```
+```text
 pivot/
-├── cmd/pivot/            # CLI entry point (cobra)
+├── cmd/pivot/            # CLI entry point
 ├── internal/
 │   ├── config/           # Configuration management
-│   ├── state/            # SQLite-backed session & journal storage
-│   ├── planner/          # AI-powered task planning (Ollama, OpenAI-compatible)
-│   ├── core/
-│   │   ├── task.go       # Task type definition
-│   │   ├── graph.go      # Dependency graph with topological sort
-│   │   ├── executor.go   # Task execution (tool + agent)
-│   │   └── orchestrator.go # Main orchestration loop
+│   ├── state/            # SQLite-backed session and journal storage
+│   ├── planner/          # AI planner integrations
+│   ├── core/             # Tasks, dependency graph, executor, orchestrator
 │   ├── tui/              # Bubble Tea terminal UI
 │   ├── worktree/         # Git worktree isolation
 │   └── cost/             # Token/cost estimation
-├── scripts/              # Build and install scripts
-├── examples/             # Usage examples and workflows
-├── assets/               # Project assets (logo, banner)
-├── .github/              # GitHub templates and CI
-├── docs/                 # Additional documentation
-├── Makefile              # Build automation
-├── Dockerfile            # Container build
-├── LICENSE               # MIT License
-├── CONTRIBUTING.md       # Contribution guidelines
-├── SECURITY.md           # Security policy
-└── CHANGELOG.md          # Version history
+├── scripts/              # Build and installation helpers
+├── examples/             # Example workflows
+├── assets/               # Branding assets
+├── docs/                 # Architecture, roadmap, and verification records
+├── .github/              # CI, CodeQL, release automation, and templates
+├── Dockerfile
+├── Makefile
+├── LICENSE
+├── CONTRIBUTING.md
+├── SECURITY.md
+└── CHANGELOG.md
 ```
 
 ## Task Model
 
-The planner generates a JSON task graph:
+The planner produces a dependency graph that can mix tool and agent tasks:
 
 ```json
 {
@@ -170,7 +132,7 @@ The planner generates a JSON task graph:
       "tool": "grep",
       "args": ["-r", "TODO", "."],
       "depends_on": [],
-      "description": "Find all TODO comments"
+      "description": "Find TODO comments"
     },
     {
       "id": "b",
@@ -184,19 +146,11 @@ The planner generates a JSON task graph:
 }
 ```
 
-## Examples
-
-See [examples/](examples/) for real-world usage patterns:
-- [Basic Usage](examples/basic-usage.md) - Quick start and common workflows
-- Finding and fixing code issues
-- Automated refactoring workflows
-- Multi-step research tasks
-
-### Common Workflows
+## Common Workflows
 
 ```bash
 # Code review
-pivot run "Review the last commit for potential bugs and security issues"
+pivot run "Review the last commit for bugs and security issues"
 
 # Bug investigation
 pivot run "Find the root cause of the null pointer exception in auth module"
@@ -205,88 +159,68 @@ pivot run "Find the root cause of the null pointer exception in auth module"
 pivot run "Implement rate limiter middleware with configurable limits"
 
 # Documentation generation
-pivot run "Generate API documentation for all exported functions"
+pivot run "Generate API documentation for exported functions"
 
 # Security audit
-pivot run "Audit codebase for SQL injection and XSS vulnerabilities"
+pivot run "Audit the codebase for SQL injection and command injection risks"
 ```
 
-## Troubleshooting
+More examples are available in [`examples/`](examples/), including [`examples/basic-usage.md`](examples/basic-usage.md).
 
-Common issues and solutions:
+## Development & Quality Gates
 
-| Issue | Solution |
-|-------|----------|
-| **Ollama connection failed** | Ensure `ollama serve` is running: `ollama serve` |
-| **Permission denied on worktree** | Check git worktree permissions: `chmod -R 755 ~/.pivot/worktrees` |
-| **Model not found** | Pull the model: `ollama pull llama3.2:3b` |
-| **API key errors** | Verify your API key in `~/.pivot/config.yaml` |
-| **SQLite database locked** | Close other pivot instances, remove `~/.pivot/state.db.lock` |
-| **TUI rendering issues** | Try a different terminal emulator or set `TERM=xterm-256color` |
-
-Still having issues? [Open an issue](https://github.com/Marwanmorsy999/pivot/issues/new) with:
-- Your OS and Go version
-- Full error message
-- Steps to reproduce
-
-## Development
+The repository treats automated validation as a required part of normal development.
 
 ```bash
-# Run tests
-make test
+# Unit tests
+go test ./...
 
-# Run linter
-make lint
-
-# Build for all platforms
-make build-all
-
-# Run with race detector
+# Race detection
 go test -race ./...
+
+# Build
+go build ./...
+
+# Formatting
+gofmt -w .
+
+# Static analysis
+go vet ./...
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines.
+GitHub Actions also runs the project's CI matrix against Go `1.26` and `1.27`, with linting, build validation, `gosec`, and `govulncheck`. CodeQL runs independently for static security analysis.
 
-## Trust & Security
+See [`docs/VERIFICATION.md`](docs/VERIFICATION.md) for a dated verification record with direct links to the GitHub checks.
 
-- ✅ All tests pass with race detection (`go test -race ./...`)
-- ✅ CI runs on every push and PR with multi-version Go testing
-- ✅ CodeQL security scanning enabled
-- ✅ Dependencies audited via Dependabot
-- ✅ SBOM generated for each release
-- ✅ HTTP clients have timeouts to prevent hanging connections
-- ✅ API keys never logged or exposed
+## Releases
 
-Security vulnerabilities can be reported via [SECURITY.md](SECURITY.md).
+PIVOT currently publishes release candidates through Git tags. The release workflow builds platform binaries, smoke-tests them, generates an SPDX SBOM, computes SHA-256 checksums, and attaches the resulting artifacts to the GitHub release.
+
+The latest published release is [`v0.1.0-rc.1`](https://github.com/Marwanmorsy999/pivot/releases/tag/v0.1.0-rc.1).
+
+## Security
+
+PIVOT is security-conscious by design, but it executes commands and can invoke AI-generated task plans. Review generated work before execution when appropriate, prefer worktree isolation for agent-driven changes, and run the CLI with the minimum permissions necessary.
+
+Security-sensitive reports should follow [`SECURITY.md`](SECURITY.md). Do not publish undisclosed vulnerabilities in normal GitHub issues.
 
 ## Contributing
 
-We welcome contributions! See our [Contributing Guide](CONTRIBUTING.md) for:
-- How to report bugs
-- Suggesting features
-- Submitting pull requests
-- Code standards and testing
+Contributions are welcome. Start with [`CONTRIBUTING.md`](CONTRIBUTING.md), use the issue/PR templates, keep changes focused, and wait for the required checks to pass before merge.
 
-Check out [MAINTAINERS.md](MAINTAINERS.md) to learn about our team and review process.
+## Documentation
 
-## Roadmap
-
-See [ROADMAP.md](docs/ROADMAP.md) for upcoming features and improvements.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — contributor workflow and quality expectations
+- [`SECURITY.md`](SECURITY.md) — vulnerability reporting and security practices
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system architecture
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — planned work
+- [`docs/VERIFICATION.md`](docs/VERIFICATION.md) — evidence-based repository verification
+- [`CHANGELOG.md`](CHANGELOG.md) — notable changes
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-Built with:
-- [Cobra](https://github.com/spf13/cobra) — CLI framework
-- [Bubble Tea](https://github.com/charmbracelet/bubbletea) — Terminal UI
-- [Lipgloss](https://github.com/charmbracelet/lipgloss) — Styling
-- [SQLite](https://github.com/mattn/go-sqlite3) — State persistence
-
----
+PIVOT is licensed under the MIT License. See [`LICENSE`](LICENSE).
 
 <p align="center">
-  <sub>Built with ❤️ by <a href="https://github.com/Marwanmorsy999">Marwan Morsy</a></sub>
+  <sub>Built in Go by <a href="https://github.com/Marwanmorsy999">Marwan Morsy</a>.</sub>
 </p>

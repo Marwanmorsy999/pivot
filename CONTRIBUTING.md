@@ -1,146 +1,123 @@
 # Contributing to PIVOT
 
-Thank you for your interest in contributing to PIVOT! This document provides guidelines for contributing to the project.
+Thank you for contributing to PIVOT. The project favors small, reviewable changes with explicit tests and a clean automated validation trail.
 
-## Code of Conduct
+## Before You Start
 
-By participating in this project, you are expected to uphold a respectful and inclusive environment.
-
-## How to Contribute
-
-### Reporting Bugs
-
-1. Check if the bug has already been reported in [Issues](https://github.com/Marwanmorsy999/pivot/issues).
-2. If not, open a new issue using the Bug Report template.
-3. Include as much detail as possible: steps to reproduce, expected behavior, environment info.
-
-### Suggesting Features
-
-1. Open a new issue using the Feature Request template.
-2. Clearly describe the problem and your proposed solution.
-3. Be open to discussion and feedback from maintainers.
-
-### Pull Requests
-
-1. Fork the repository and create your branch from `main`.
-2. Make your changes in a focused, single-purpose branch.
-3. Write or update tests for any changed functionality.
-4. Run `go test ./...` and `go test -race ./...` locally.
-5. Run `go fmt ./...` and `go vet ./...` before opening the PR.
-6. Run `golangci-lint run ./...` when available.
-7. Update documentation if needed (README, CHANGELOG, etc.).
-8. Open a pull request using the PR template.
+For bugs and feature requests, check existing [issues](https://github.com/Marwanmorsy999/pivot/issues) first. Security vulnerabilities must be reported privately through the process in [`SECURITY.md`](SECURITY.md).
 
 ## Development Setup
 
 ### Prerequisites
 
-- Go 1.21 or later
-- Git
-- A C compiler/toolchain (required by `github.com/mattn/go-sqlite3`)
+- Go `1.21+` for the module baseline.
+- A working C compiler/toolchain for SQLite (`github.com/mattn/go-sqlite3`).
+- Git.
 
-### Getting Started
+Clone the repository and verify the working tree:
 
 ```bash
-# Clone the repository
 git clone https://github.com/Marwanmorsy999/pivot.git
 cd pivot
+git status
+```
 
-# Install dependencies
-go mod tidy
+Download dependencies and run the test suite:
 
-# Run tests
+```bash
+go mod download
 go test ./...
+go test -race ./...
+```
 
-# Build the CLI
+Build the CLI and verify it starts:
+
+```bash
 go build -o pivot ./cmd/pivot
-```
-
-### Project Structure
-
-```
-pivot/
-├── cmd/
-│   └── pivot/
-│       └── main.go           # CLI entry point
-├── internal/
-│   ├── config/               # Configuration management
-│   ├── core/                 # Graph, executor, orchestrator
-│   ├── cost/                 # Token/cost estimation
-│   ├── planner/              # AI planners (Ollama, OpenAI)
-│   ├── state/                # SQLite persistence
-│   ├── tui/                  # Terminal UI
-│   └── worktree/             # Git worktree isolation
-├── docs/                     # Architecture, roadmap, proofs
-├── examples/                 # Usage examples
-└── scripts/                  # Development/release helpers
+./pivot --help
 ```
 
 ## Coding Standards
 
-- Follow standard Go conventions and idioms
-- Use `gofmt` for code formatting
-- Write meaningful commit messages
-- Add tests for new functionality
-- Document exported functions and types
-- Handle errors properly — never silently ignore them
+Use idiomatic Go and keep changes focused. Format code with `gofmt`, handle errors explicitly, avoid unnecessary global state, and add tests for behavior that changes or is introduced.
 
-## Testing
+Before opening a pull request, run the checks that can be reproduced locally:
 
 ```bash
-# Run all tests
-go test ./...
-
-# Run tests with race detector
+gofmt -w .
+go vet ./...
 go test -race ./...
-
-# Run tests with coverage
-go test -coverprofile=coverage.out ./...
-go tool cover -func=coverage.out
-
-# Run tests for a specific package
-go test ./internal/core/...
+go build ./...
 ```
 
-## Commit Message Format
+Run `golangci-lint` locally when available:
 
-Use clear, descriptive commit messages:
-
-```
-<type>: <description>
-
-[optional body]
+```bash
+golangci-lint run ./...
 ```
 
-Types:
-- `feat`: New feature
-- `fix`: Bug fix
-- `docs`: Documentation changes
-- `test`: Adding or updating tests
-- `refactor`: Code refactoring
-- `chore`: Maintenance tasks
+## Pull Requests
 
-Example:
+1. Create a focused branch from `main`.
+2. Keep the change set small and explain the motivation in the PR description.
+3. Add or update tests for functional changes.
+4. Update documentation when user-visible behavior, configuration, or development workflow changes.
+5. Check that CI, security scanning, and CodeQL are green before merge.
+6. Do not merge around a failing required check; investigate the failure or document a verified infrastructure issue.
 
+## Commit Messages
+
+Use a clear conventional-style prefix:
+
+```text
+feat: add parallel task execution
+fix: handle planner timeout errors
+docs: clarify configuration setup
+test: cover worktree cleanup
+refactor: simplify task scheduling
+chore: update build tooling
 ```
-feat: add support for Anthropic Claude planner
 
-Implements a new planner using the Anthropic API with
-proper error handling and timeout configuration.
-```
+Keep the subject concise and describe the user/developer impact where useful.
 
 ## Branch and Release Process
 
-Use a lightweight GitHub Flow:
+PIVOT uses GitHub Flow:
 
-1. Create a focused feature or fix branch from `main`.
-2. Open a pull request and wait for CI/security checks to pass.
-3. Merge using a single linear history where practical.
-4. Create version tags in the form `vX.Y.Z` for releases.
-5. Pushing a `v*` tag triggers the release workflow.
+```text
+main
+  └── focused branch → pull request → required checks → merge
+```
 
-Before releasing, update `CHANGELOG.md` and verify the release artifacts and SBOM.
+Do not rewrite the history of `main`. Release versions are created from Git tags matching `v*`; the release workflow then tests, builds, smoke-tests, generates an SPDX SBOM, computes SHA-256 checksums, and publishes the artifacts.
 
-## Questions?
+## Testing Expectations
 
-Feel free to open an issue for any questions or concerns.
+At minimum, functional changes should pass:
+
+```bash
+go test ./...
+go test -race ./...
+go build ./...
+```
+
+Changes involving concurrency, state persistence, command execution, networking, or security-sensitive behavior should include targeted regression tests.
+
+## Documentation
+
+Keep these project documents synchronized with reality:
+
+- [`README.md`](README.md) — user-facing overview and quick start.
+- [`SECURITY.md`](SECURITY.md) — security reporting and operational guidance.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — architecture reference.
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — planned work.
+- [`docs/VERIFICATION.md`](docs/VERIFICATION.md) — dated verification evidence.
+- [`CHANGELOG.md`](CHANGELOG.md) — notable user-facing changes.
+
+## Code Review Standard
+
+Reviewers should verify correctness, test coverage, backward compatibility where relevant, security implications, and documentation impact. A clean diff and green automation are part of the definition of done.
+
+## Questions
+
+Open a discussion through GitHub Issues for project questions that are not security-sensitive. Be specific about the command, environment, expected behavior, and observed behavior when reporting a problem.
