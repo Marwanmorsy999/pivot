@@ -18,6 +18,39 @@ import (
 
 var version = "dev"
 
+func buildPlanner(cfg *config.Config) planner.Planner {
+	switch cfg.Planner.Provider {
+	case "anthropic":
+		return &planner.AnthropicPlanner{
+			APIKey:   cfg.Planner.APIKey,
+			Model:    cfg.Planner.Model,
+			Endpoint: cfg.Planner.Endpoint,
+		}
+	case "openai", "groq", "gemini":
+		endpoint := cfg.Planner.Endpoint
+		if endpoint == "" {
+			switch cfg.Planner.Provider {
+			case "groq":
+				endpoint = "https://api.groq.com/openai/v1/chat/completions"
+			case "gemini":
+				endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+			default:
+				endpoint = "https://api.openai.com/v1/chat/completions"
+			}
+		}
+		return &planner.OpenAPlanner{
+			APIKey:   cfg.Planner.APIKey,
+			Model:    cfg.Planner.Model,
+			Endpoint: endpoint,
+		}
+	default:
+		return &planner.OllamaPlanner{
+			Endpoint: cfg.Planner.Endpoint,
+			Model:    cfg.Planner.Model,
+		}
+	}
+}
+
 func main() {
 	rootCmd := &cobra.Command{
 		Use:     "pivot",
@@ -90,6 +123,11 @@ func main() {
 				return
 			}
 
+			if cfg.Planner.Provider == "" || (cfg.Planner.Provider == "ollama" && cfg.Planner.Endpoint == "") {
+				fmt.Println("❌ No AI provider configured. Run 'pivot detect' then 'pivot init', or set an API key env var (ANTHROPIC_API_KEY, OPENAI_API_KEY, GROQ_API_KEY).")
+				return
+			}
+
 			s, err := state.New()
 			if err != nil {
 				fmt.Printf("❌ Failed to initialize state: %v\n", err)
@@ -108,31 +146,7 @@ func main() {
 			}
 			fmt.Printf("📝 Session: %s\n", sessionID)
 
-			var p planner.Planner
-			switch cfg.Planner.Provider {
-			case "openai", "groq", "gemini", "anthropic":
-				endpoint := cfg.Planner.Endpoint
-				if endpoint == "" {
-					switch cfg.Planner.Provider {
-					case "groq":
-						endpoint = "https://api.groq.com/openai/v1/chat/completions"
-					case "gemini":
-						endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-					default:
-						endpoint = "https://api.openai.com/v1/chat/completions"
-					}
-				}
-				p = &planner.OpenAPlanner{
-					APIKey:   cfg.Planner.APIKey,
-					Model:    cfg.Planner.Model,
-					Endpoint: endpoint,
-				}
-			default:
-				p = &planner.OllamaPlanner{
-					Endpoint: cfg.Planner.Endpoint,
-					Model:    cfg.Planner.Model,
-				}
-			}
+			p := buildPlanner(cfg)
 
 			fmt.Println("🧠 Planning...")
 			tasks, err := p.Plan(goal)
@@ -204,21 +218,33 @@ func main() {
 				fmt.Printf("❌ Failed to load config: %v\n", err)
 				return
 			}
-			var p planner.Planner
-			if cfg.Planner.Provider == "ollama" {
-				p = &planner.OllamaPlanner{Endpoint: cfg.Planner.Endpoint, Model: cfg.Planner.Model}
-			} else {
-				p = &planner.OpenAPlanner{APIKey: cfg.Planner.APIKey, Model: cfg.Planner.Model, Endpoint: cfg.Planner.Endpoint}
-			}
+
+			p := buildPlanner(cfg)
 
 			tasks, err := p.Plan(goal)
 			if err != nil {
 				fmt.Printf("❌ Planning failed: %v\n", err)
 				return
 			}
+
+			// Filter to only failed tasks
+			failedSet := make(map[string]bool, len(failed))
+			for _, id := range failed {
+				failedSet[id] = true
+			}
+			var pendingTasks []planner.Task
+			for _, t := range tasks {
+				if failedSet[t.ID] {
+					pendingTasks = append(pendingTasks, t)
+				}
+			}
+			if len(pendingTasks) == 0 {
+				pendingTasks = tasks
+			}
+
 			eventCh := make(chan core.Event, 100)
 			go func() {
-				orchestrator := core.NewOrchestrator(tasks, sessionID, s, eventCh)
+				orchestrator := core.NewOrchestrator(pendingTasks, sessionID, s, eventCh)
 				err := orchestrator.Run(ctx)
 				if err != nil && err != context.Canceled {
 					eventCh <- core.Event{Type: core.EventError, Message: err.Error()}
@@ -226,7 +252,7 @@ func main() {
 				close(eventCh)
 			}()
 
-			tuiModel := tui.NewModel(sessionID, goal, tasks, eventCh)
+			tuiModel := tui.NewModel(sessionID, goal, pendingTasks, eventCh)
 			if err := tuiModel.Run(); err != nil {
 				fmt.Printf("❌ TUI error: %v\n", err)
 			}
@@ -241,6 +267,9 @@ func main() {
 			fmt.Println("🔍 Pivot Auto-Detection Report")
 			fmt.Println("──────────────────────────────")
 			fmt.Println("AI Providers Found:")
+			if len(r.Providers) == 0 {
+				fmt.Println("  (none — set ANTHROPIC_API_KEY, OPENAI_API_KEY, GROQ_API_KEY, or run Ollama locally)")
+			}
 			for name, found := range r.Providers {
 				status := "❌"
 				if found {
@@ -257,10 +286,14 @@ func main() {
 				}
 			}
 			fmt.Println("──────────────────────────────")
-			fmt.Printf("🏆 Best Provider: %s (model: %s)\n", r.DetectedProvider, r.DetectedModel)
-			fmt.Printf("🔌 Endpoint: %s\n", r.DetectedEndpoint)
-			if r.DetectedAPIKey != "" {
-				fmt.Println("🔑 API Key: configured")
+			if r.DetectedProvider == "" {
+				fmt.Println("⚠️  No provider detected. Set an API key env var or start Ollama.")
+			} else {
+				fmt.Printf("🏆 Best Provider: %s (model: %s)\n", r.DetectedProvider, r.DetectedModel)
+				fmt.Printf("🔌 Endpoint: %s\n", r.DetectedEndpoint)
+				if r.DetectedAPIKey != "" {
+					fmt.Println("🔑 API Key: configured")
+				}
 			}
 			fmt.Println("\n💡 Run 'pivot init' to apply auto-config.")
 		},

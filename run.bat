@@ -1,3 +1,3 @@
 @echo off
 echo Running pivot via go (works everywhere)...
-go run . %*
+go run ./cmd/pivot %*

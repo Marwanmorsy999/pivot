@@ -6,8 +6,8 @@ vendor/
 dist/
 build/
 target/
-pivot
-pivot.exe
+/pivot
+/pivot.exe
 *.exe
 *.dll
 *.dylib
@@ -15,6 +15,9 @@ pivot.exe
 *.o
 *.a
 *.test
+
+# State / DB
+*.db
 
 # Environment files
 .env
@@ -45,7 +48,7 @@ coverage.out
 htmlcov/
 .coverage
 
-# Python cache (if present)
+# Python cache
 __pycache__/
 *.pyc
 *.pyo

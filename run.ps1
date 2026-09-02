@@ -1,1 +1,1 @@
-﻿$cmd = "go"; $args = @("run", ".") + $args; & $cmd @args
+$cmd = "go"; $a = @("run", "./cmd/pivot") + $args; & $cmd @a
