@@ -64,7 +64,7 @@ Goal: "%s"`, goal)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Anthropic API error %d: %s", resp.StatusCode, string(resBody))
+		return nil, fmt.Errorf("anthropic API error %d: %s", resp.StatusCode, string(resBody))
 	}
 
 	var wrapper struct {
