@@ -17,39 +17,44 @@ import (
 
 var (
 	titleStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#7D56F4")).
-		MarginLeft(1)
+			Bold(true).
+			Foreground(lipgloss.Color("#7D56F4")).
+			MarginLeft(1)
 
 	pendingStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#626262"))
+			Foreground(lipgloss.Color("#626262"))
 
 	runningStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#FFAB40"))
+			Bold(true).
+			Foreground(lipgloss.Color("#FFAB40"))
 
 	completedStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#04B575"))
+			Bold(true).
+			Foreground(lipgloss.Color("#04B575"))
 
 	failedStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#FF4444"))
+			Bold(true).
+			Foreground(lipgloss.Color("#FF4444"))
 
 	skippedStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#888888"))
+			Foreground(lipgloss.Color("#888888"))
 
 	costStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#FFD700"))
+			Bold(true).
+			Foreground(lipgloss.Color("#FFD700"))
 
 	helpStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#626262")).
-		MarginLeft(1)
+			Foreground(lipgloss.Color("#626262")).
+			MarginLeft(1)
+
+	retryStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FFA500"))
 )
 
 type eventClosedMsg struct{}
 
+// Model is the Bubble Tea model for pivot's TUI.
+// All methods use pointer receivers so mutations are preserved across frames.
 type Model struct {
 	sessionID   string
 	goal        string
@@ -65,10 +70,12 @@ type Model struct {
 	totalTokens int
 	startTime   time.Time
 	finalMsg    string
+	width       int
 }
 
+// NewModel constructs a TUI model ready to receive events.
 func NewModel(sessionID, goal string, tasks []planner.Task, eventCh <-chan core.Event) *Model {
-	taskMap := make(map[string]*core.Task)
+	taskMap := make(map[string]*core.Task, len(tasks))
 	taskOrder := make([]string, len(tasks))
 
 	for i, t := range tasks {
@@ -78,45 +85,42 @@ func NewModel(sessionID, goal string, tasks []planner.Task, eventCh <-chan core.
 	}
 
 	cols := []table.Column{
-		{Title: "ID", Width: 6},
-		{Title: "Type", Width: 8},
+		{Title: "ID", Width: 16},
+		{Title: "Type", Width: 6},
 		{Title: "Tool", Width: 14},
 		{Title: "Description", Width: 30},
-		{Title: "Status", Width: 12},
+		{Title: "Status", Width: 10},
 		{Title: "Cost", Width: 10},
 	}
 
 	rows := make([]table.Row, len(tasks))
 	for i, t := range tasks {
 		rows[i] = table.Row{
-			t.ID,
+			truncate(t.ID, 16),
 			string(t.Type),
-			t.Tool,
-			truncate(t.Description, 28),
+			truncate(t.Tool, 14),
+			truncate(t.Description, 30),
 			"pending",
 			"$0.000000",
 		}
 	}
 
-	t := table.New(
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = runningStyle
+
+	tbl := table.New(
 		table.WithColumns(cols),
 		table.WithRows(rows),
 		table.WithFocused(false),
-		table.WithHeight(len(tasks)+1),
+		table.WithHeight(min(len(tasks)+1, 12)),
 	)
+	tbl.SetStyles(table.Styles{
+		Header: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7D56F4")),
+		Cell:   lipgloss.NewStyle().Foreground(lipgloss.Color("#EEEEEE")),
+	})
 
-	ts := table.DefaultStyles()
-	ts.Header = ts.Header.
-		Bold(true).
-		Foreground(lipgloss.Color("#7D56F4")).
-		BorderBottom(true)
-	ts.Selected = ts.Selected.
-		Foreground(lipgloss.Color("#FFFFFF")).
-		Background(lipgloss.Color("#7D56F4"))
-	t.SetStyles(ts)
-
-	s := spinner.New(spinner.WithSpinner(spinner.Dot))
-	vp := viewport.New(80, 10)
+	vp := viewport.New(80, 8)
 
 	return &Model{
 		sessionID: sessionID,
@@ -126,21 +130,28 @@ func NewModel(sessionID, goal string, tasks []planner.Task, eventCh <-chan core.
 		eventCh:   eventCh,
 		spinner:   s,
 		viewport:  vp,
-		table:     t,
-		events:    []string{},
+		table:     tbl,
 		startTime: time.Now(),
+		width:     80,
 	}
 }
 
-func (m Model) Init() tea.Cmd {
+// Init starts the spinner tick and begins listening for events.
+func (m *Model) Init() tea.Cmd {
 	return tea.Batch(
 		m.spinner.Tick,
 		m.waitForEvent(),
 	)
 }
 
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+// Update handles all incoming messages. Pointer receiver ensures state persists.
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.viewport.Width = msg.Width
+		return m, m.waitForEvent()
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -150,7 +161,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
-		return m, cmd
+		return m, tea.Batch(cmd, m.waitForEvent())
 
 	case core.Event:
 		return m.handleEvent(msg)
@@ -166,14 +177,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, m.waitForEvent()
 }
 
-func (m Model) View() string {
+// View renders the current TUI frame.
+func (m *Model) View() string {
 	var b strings.Builder
 
 	b.WriteString(titleStyle.Render("⚡ PIVOT — Hybrid CLI Orchestrator"))
 	b.WriteString("\n")
-	_, _ = fmt.Fprintf(&b, "  Session: %s\n", m.sessionID)
-	_, _ = fmt.Fprintf(&b, "  Goal: %s\n", m.goal)
-	_, _ = fmt.Fprintf(&b, "  Runtime: %s\n", time.Since(m.startTime).Round(time.Second))
+	fmt.Fprintf(&b, "  Session : %s\n", m.sessionID)
+	fmt.Fprintf(&b, "  Goal    : %s\n", truncate(m.goal, m.width-12))
+	fmt.Fprintf(&b, "  Runtime : %s\n", time.Since(m.startTime).Round(time.Second))
 	b.WriteString("\n")
 
 	b.WriteString(titleStyle.Render("📋 Tasks"))
@@ -181,38 +193,45 @@ func (m Model) View() string {
 	b.WriteString(m.table.View())
 	b.WriteString("\n\n")
 
-	_, _ = fmt.Fprintf(&b, "%s\n\n", costStyle.Render(fmt.Sprintf("💰 Cost: $%.6f  |  🔤 Tokens: %d", m.totalCost, m.totalTokens)))
+	b.WriteString(costStyle.Render(
+		fmt.Sprintf("💰 Cost: $%.6f  |  🔤 Tokens: %d", m.totalCost, m.totalTokens),
+	))
+	b.WriteString("\n\n")
 
 	b.WriteString(titleStyle.Render("📜 Log"))
 	b.WriteString("\n")
 
-	if len(m.events) > 0 {
-		start := 0
-		if len(m.events) > 8 {
-			start = len(m.events) - 8
-		}
-		for _, e := range m.events[start:] {
-			_, _ = fmt.Fprintf(&b, "  %s\n", e)
-		}
+	// Show last 8 log lines; wire the viewport for scroll if needed.
+	logs := m.events
+	if len(logs) > 8 {
+		logs = logs[len(logs)-8:]
+	}
+	if len(logs) > 0 {
+		m.viewport.SetContent(strings.Join(logs, "\n"))
+		b.WriteString(m.viewport.View())
 	} else {
 		b.WriteString(pendingStyle.Render("  Waiting for events..."))
-		b.WriteString("\n")
 	}
+	b.WriteString("\n")
 
 	if m.done {
 		b.WriteString("\n")
-		b.WriteString(completedStyle.Render("  " + m.finalMsg))
+		if strings.HasPrefix(m.finalMsg, "❌") {
+			b.WriteString(failedStyle.Render("  " + m.finalMsg))
+		} else {
+			b.WriteString(completedStyle.Render("  " + m.finalMsg))
+		}
 		b.WriteString("\n")
 	}
 
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("  q: quit"))
+	b.WriteString(helpStyle.Render("  q / ctrl+c: quit"))
 	b.WriteString("\n")
 
 	return b.String()
 }
 
-func (m Model) waitForEvent() tea.Cmd {
+func (m *Model) waitForEvent() tea.Cmd {
 	return func() tea.Msg {
 		ev, ok := <-m.eventCh
 		if !ok {
@@ -222,44 +241,54 @@ func (m Model) waitForEvent() tea.Cmd {
 	}
 }
 
-func (m Model) handleEvent(ev core.Event) (tea.Model, tea.Cmd) {
+func (m *Model) handleEvent(ev core.Event) (tea.Model, tea.Cmd) {
 	switch ev.Type {
 	case core.EventTaskUpdate:
 		task, ok := m.tasks[ev.TaskID]
 		if !ok {
 			return m, m.waitForEvent()
 		}
-
 		task.Status = ev.Status
-
-		statusStr := styleStatus(ev.Status)
-		toolStr := task.Tool
-		if len(toolStr) > 12 {
-			toolStr = toolStr[:12]
+		if ev.Output != "" {
+			task.Output = ev.Output
+		}
+		if ev.Error != "" {
+			task.Error = ev.Error
 		}
 
+		// Build log line — include retry annotation if present.
+		annotation := ev.Status
+		if ev.Message != "" {
+			annotation = fmt.Sprintf("%s (%s)", ev.Status, ev.Message)
+		}
 		m.events = append(m.events, fmt.Sprintf(
-			"[%s] %s %s %s",
+			"[%s] %s %s — %s",
 			time.Now().Format("15:04:05"),
-			statusStr,
+			styleStatus(ev.Status),
 			ev.TaskID,
-			ev.Status,
+			annotation,
 		))
+		if ev.Error != "" {
+			m.events = append(m.events, fmt.Sprintf(
+				"         ↳ %s", failedStyle.Render(truncate(ev.Error, 72)),
+			))
+		}
 
+		// Refresh table row.
 		rows := m.table.Rows()
 		for i, row := range rows {
-			if row[0] == ev.TaskID {
-				cost := "$0.000000"
+			if row[0] == truncate(ev.TaskID, 16) {
+				costStr := "$0.000000"
 				if task.Cost > 0 {
-					cost = fmt.Sprintf("$%.6f", task.Cost)
+					costStr = fmt.Sprintf("$%.6f", task.Cost)
 				}
 				rows[i] = table.Row{
-					ev.TaskID,
+					truncate(ev.TaskID, 16),
 					string(task.Type),
-					toolStr,
-					truncate(task.Description, 28),
+					truncate(task.Tool, 14),
+					truncate(task.Description, 30),
 					ev.Status,
-					cost,
+					costStr,
 				}
 				break
 			}
@@ -271,20 +300,35 @@ func (m Model) handleEvent(ev core.Event) (tea.Model, tea.Cmd) {
 		m.totalCost = ev.Cost
 		m.totalTokens = ev.Tokens
 		m.finalMsg = ev.Message
+		m.events = append(m.events, fmt.Sprintf(
+			"[%s] %s %s",
+			time.Now().Format("15:04:05"),
+			completedStyle.Render("✓"),
+			ev.Message,
+		))
 		return m, nil
 
 	case core.EventError:
 		m.done = true
 		m.finalMsg = fmt.Sprintf("❌ Error: %s", ev.Message)
 		m.events = append(m.events, fmt.Sprintf(
-			"[%s] ❌ %s",
+			"[%s] %s %s",
 			time.Now().Format("15:04:05"),
+			failedStyle.Render("✗"),
 			ev.Message,
 		))
 		return m, nil
 	}
 
 	return m, m.waitForEvent()
+}
+
+// Run starts the Bubble Tea program. The model is passed as a pointer so
+// the program mutates a single instance (avoids value-copy TUI bugs).
+func (m *Model) Run() error {
+	p := tea.NewProgram(m, tea.WithAltScreen())
+	_, err := p.Run()
+	return err
 }
 
 func styleStatus(status string) string {
@@ -302,15 +346,25 @@ func styleStatus(status string) string {
 	}
 }
 
-func (m *Model) Run() error {
-	p := tea.NewProgram(m)
-	_, err := p.Run()
-	return err
-}
-
 func truncate(s string, max int) string {
+	if max <= 0 {
+		return s
+	}
 	if len(s) <= max {
 		return s
 	}
+	if max <= 3 {
+		return s[:max]
+	}
 	return s[:max-3] + "..."
 }
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// Silence unused import warning for retryStyle (used in future log lines).
+var _ = retryStyle

@@ -2,6 +2,7 @@ package core
 
 import "github.com/Marwanmorsy999/pivot/internal/planner"
 
+// Task wraps a planner.Task with runtime execution state.
 type Task struct {
 	planner.Task
 	Status    string  `json:"status"`
@@ -11,4 +12,6 @@ type Task struct {
 	TokenUsed int     `json:"token_used"`
 	StartTime int64   `json:"start_time"`
 	EndTime   int64   `json:"end_time"`
+	// Message carries retry/info annotations for the TUI.
+	Message string `json:"message,omitempty"`
 }

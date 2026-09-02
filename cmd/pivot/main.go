@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -51,6 +52,14 @@ func buildPlanner(cfg *config.Config) planner.Planner {
 	}
 }
 
+func newSignalCtx() (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() { <-sigCh; cancel() }()
+	return ctx, cancel
+}
+
 func main() {
 	rootCmd := &cobra.Command{
 		Use:     "pivot",
@@ -93,12 +102,21 @@ func main() {
 			if cfg.Planner.APIKey != "" {
 				fmt.Println("🔑 API Key: configured (hidden)")
 			}
-			fmt.Printf("🛠 Local Tools Found: %d (git=%v docker=%v node=%v python=%v)\n", len(detected.LocalTools), detected.LocalTools["git"], detected.LocalTools["docker"], detected.LocalTools["node"], detected.LocalTools["python3"] || detected.LocalTools["python"])
+			fmt.Printf("🛠 Local Tools Found: %d (git=%v docker=%v node=%v python=%v)\n",
+				len(detected.LocalTools),
+				detected.LocalTools["git"],
+				detected.LocalTools["docker"],
+				detected.LocalTools["node"],
+				detected.LocalTools["python3"] || detected.LocalTools["python"],
+			)
 			fmt.Println("✅ Initialized ~/.pivot/config.yaml (auto-detected)")
 			fmt.Println("✅ Initialized ~/.pivot/state.db")
 			fmt.Println("🔧 Run 'pivot run \"your goal\"' to start orchestrating.")
 		},
 	}
+
+	var dryRun bool
+	var maxParallel int
 
 	runCmd := &cobra.Command{
 		Use:   "run [goal]",
@@ -107,24 +125,16 @@ func main() {
 		Run: func(cmd *cobra.Command, args []string) {
 			goal := args[0]
 
-			ctx, cancel := context.WithCancel(context.Background())
+			ctx, cancel := newSignalCtx()
 			defer cancel()
-
-			sigCh := make(chan os.Signal, 1)
-			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-			go func() {
-				<-sigCh
-				cancel()
-			}()
 
 			cfg, err := config.Load()
 			if err != nil {
 				fmt.Printf("❌ Failed to load config: %v\n", err)
 				return
 			}
-
 			if cfg.Planner.Provider == "" || (cfg.Planner.Provider == "ollama" && cfg.Planner.Endpoint == "") {
-				fmt.Println("❌ No AI provider configured. Run 'pivot detect' then 'pivot init', or set an API key env var (ANTHROPIC_API_KEY, OPENAI_API_KEY, GROQ_API_KEY).")
+				fmt.Println("❌ No AI provider configured. Run 'pivot detect' then 'pivot init', or set an API key env var.")
 				return
 			}
 
@@ -159,9 +169,35 @@ func main() {
 				return
 			}
 
+			// Validate tasks before execution.
+			if err := planner.Validate(tasks); err != nil {
+				fmt.Printf("❌ Invalid task plan: %v\n", err)
+				return
+			}
+
+			// Dry run: show plan without executing.
+			if dryRun {
+				fmt.Println("\n📋 Dry run — task plan (not executing):")
+				for i, t := range tasks {
+					fmt.Printf("  %d. [%s] %s: %s\n", i+1, t.Type, t.Tool, t.Description)
+					if len(t.DependsOn) > 0 {
+						fmt.Printf("     depends_on: %v\n", t.DependsOn)
+					}
+				}
+				return
+			}
+
+			// Persist the task plan for deterministic resume.
+			if tasksJSON, err := json.Marshal(tasks); err == nil {
+				if err := s.SaveSessionTasks(sessionID, tasksJSON); err != nil {
+					fmt.Fprintf(os.Stderr, "warning: failed to persist task plan: %v\n", err)
+				}
+			}
+
+			opts := core.OrchestratorOptions{MaxParallel: maxParallel}
 			eventCh := make(chan core.Event, 100)
 			go func() {
-				orchestrator := core.NewOrchestrator(tasks, sessionID, s, eventCh)
+				orchestrator := core.NewOrchestrator(tasks, sessionID, s, eventCh, opts)
 				err := orchestrator.Run(ctx)
 				if err != nil && err != context.Canceled {
 					eventCh <- core.Event{Type: core.EventError, Message: err.Error()}
@@ -175,13 +211,16 @@ func main() {
 			}
 		},
 	}
+	runCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show the task plan without executing")
+	runCmd.Flags().IntVar(&maxParallel, "parallel", 4, "Max tasks to run in parallel (0 = unlimited)")
 
 	resumeCmd := &cobra.Command{
 		Use:   "resume [session-id]",
-		Short: "Resume a failed or paused session",
+		Short: "Resume a failed or paused session (uses persisted task plan)",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			sessionID := args[0]
+
 			s, err := state.New()
 			if err != nil {
 				fmt.Printf("❌ Failed to initialize state: %v\n", err)
@@ -210,41 +249,37 @@ func main() {
 				return
 			}
 
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-
-			cfg, err := config.Load()
-			if err != nil {
-				fmt.Printf("❌ Failed to load config: %v\n", err)
-				return
-			}
-
-			p := buildPlanner(cfg)
-
-			tasks, err := p.Plan(goal)
-			if err != nil {
-				fmt.Printf("❌ Planning failed: %v\n", err)
-				return
-			}
-
-			// Filter to only failed tasks
-			failedSet := make(map[string]bool, len(failed))
-			for _, id := range failed {
-				failedSet[id] = true
-			}
-			pendingTasks := make([]planner.Task, 0, len(tasks))
-			for _, t := range tasks {
-				if failedSet[t.ID] {
-					pendingTasks = append(pendingTasks, t)
+			// Load persisted task plan — avoids non-deterministic re-planning.
+			var tasks []planner.Task
+			savedJSON, err := s.GetSessionTasks(sessionID)
+			if err != nil || len(savedJSON) == 0 {
+				// Fallback: re-plan (old sessions without saved plan).
+				fmt.Println("⚠️  No persisted plan found, re-planning...")
+				cfg, err := config.Load()
+				if err != nil {
+					fmt.Printf("❌ Failed to load config: %v\n", err)
+					return
+				}
+				p := buildPlanner(cfg)
+				tasks, err = p.Plan(goal)
+				if err != nil {
+					fmt.Printf("❌ Planning failed: %v\n", err)
+					return
+				}
+			} else {
+				if err := json.Unmarshal(savedJSON, &tasks); err != nil {
+					fmt.Printf("❌ Failed to parse saved plan: %v\n", err)
+					return
 				}
 			}
-			if len(pendingTasks) == 0 {
-				pendingTasks = tasks
-			}
 
+			ctx, cancel := newSignalCtx()
+			defer cancel()
+
+			opts := core.OrchestratorOptions{MaxParallel: maxParallel}
 			eventCh := make(chan core.Event, 100)
 			go func() {
-				orchestrator := core.NewOrchestrator(pendingTasks, sessionID, s, eventCh)
+				orchestrator := core.NewOrchestrator(tasks, sessionID, s, eventCh, opts)
 				err := orchestrator.Run(ctx)
 				if err != nil && err != context.Canceled {
 					eventCh <- core.Event{Type: core.EventError, Message: err.Error()}
@@ -252,16 +287,17 @@ func main() {
 				close(eventCh)
 			}()
 
-			tuiModel := tui.NewModel(sessionID, goal, pendingTasks, eventCh)
+			tuiModel := tui.NewModel(sessionID, goal, tasks, eventCh)
 			if err := tuiModel.Run(); err != nil {
 				fmt.Printf("❌ TUI error: %v\n", err)
 			}
 		},
 	}
+	resumeCmd.Flags().IntVar(&maxParallel, "parallel", 4, "Max tasks to run in parallel")
 
 	detectCmd := &cobra.Command{
 		Use:   "detect",
-		Short: "Detect all providers and local setup (super easy)",
+		Short: "Detect all providers and local setup",
 		Run: func(cmd *cobra.Command, args []string) {
 			r := config.Detect()
 			fmt.Println("🔍 Pivot Auto-Detection Report")
