@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.27.0-alpine3.24 AS builder
+FROM golang:1.24-alpine3.21 AS builder
 
 RUN apk add --no-cache gcc musl-dev
 
@@ -16,7 +16,7 @@ COPY . .
 RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w -X main.version=docker" -o pivot ./cmd/pivot
 
 # Runtime stage
-FROM alpine:3.24.1
+FROM alpine:3.21
 
 RUN apk --no-cache add git bash ca-certificates
 
