@@ -35,8 +35,8 @@ jobs:
       - name: Install CGO dependencies
         run: sudo apt-get install -y gcc libsqlite3-dev
 
-      - name: Download dependencies
-        run: go mod download
+      - name: Tidy and download dependencies
+        run: go mod tidy && go mod download
 
       - name: Run tests with race detector
         run: CGO_ENABLED=1 go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
@@ -68,13 +68,13 @@ jobs:
       - name: Install CGO dependencies
         run: sudo apt-get install -y gcc libsqlite3-dev
 
-      - name: Download dependencies
-        run: go mod download
+      - name: Tidy and download dependencies
+        run: go mod tidy && go mod download
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v1.64.8
+          version: v2.1.6
           args: --timeout=5m
 
   build:
@@ -93,8 +93,8 @@ jobs:
       - name: Install CGO dependencies
         run: sudo apt-get install -y gcc libsqlite3-dev
 
-      - name: Download dependencies
-        run: go mod download
+      - name: Tidy and download dependencies
+        run: go mod tidy && go mod download
 
       - name: Build all packages
         run: CGO_ENABLED=1 go build -v ./...

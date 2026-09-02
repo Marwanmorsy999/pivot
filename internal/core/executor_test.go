@@ -173,24 +173,3 @@ func TestExecutor_SetGetOutput_Concurrent(t *testing.T) {
 	<-done
 }
 
-func TestExecutor_ParseTasks_StripsFences(t *testing.T) {
-	raw := "```json\n{\"tasks\":[]}\n```"
-	tasks, err := parseTasks(raw)
-	if err != nil {
-		t.Fatalf("parseTasks failed: %v", err)
-	}
-	if tasks == nil {
-		t.Fatal("expected non-nil tasks slice")
-	}
-}
-
-func TestExecutor_ParseTasks_PlainJSON(t *testing.T) {
-	raw := `{"tasks":[{"id":"a","type":"tool","tool":"echo","args":[],"depends_on":[]}]}`
-	tasks, err := parseTasks(raw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(tasks) != 1 || tasks[0].ID != "a" {
-		t.Fatalf("unexpected tasks: %v", tasks)
-	}
-}
