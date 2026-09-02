@@ -232,7 +232,7 @@ func main() {
 			for _, id := range failed {
 				failedSet[id] = true
 			}
-			var pendingTasks []planner.Task
+			pendingTasks := make([]planner.Task, 0, len(tasks))
 			for _, t := range tasks {
 				if failedSet[t.ID] {
 					pendingTasks = append(pendingTasks, t)
