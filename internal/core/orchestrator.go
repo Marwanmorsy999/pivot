@@ -34,8 +34,11 @@ type Event struct {
 // OrchestratorOptions configures runtime behaviour.
 type OrchestratorOptions struct {
 	// MaxParallel is the maximum number of tasks that may run concurrently.
-	// 0 means unlimited (run all tasks in a wave at once).
+	// 0 means unlimited (all tasks in a wave run at once).
 	MaxParallel int
+	// Provider and Model are forwarded to the Executor for cost tracking.
+	Provider string
+	Model    string
 }
 
 // Orchestrator drives execution of a task graph.
@@ -64,17 +67,22 @@ func NewOrchestrator(
 	}
 }
 
+// isCompleted returns true if a task has already been recorded as completed in
+// state. Returns false (not completed) when state is nil (e.g. in tests).
+func (o *Orchestrator) isCompleted(taskID string) (bool, error) {
+	if o.state == nil {
+		return false, nil
+	}
+	return o.state.IsTaskCompleted(o.sessionID, taskID)
+}
+
 // Run executes the task graph using parallel wave scheduling.
 //
-// Tasks are grouped into waves by topological depth — tasks with no mutual
-// dependencies are placed in the same wave and executed concurrently.  A
-// configurable semaphore limits the maximum number of concurrent tasks.
-//
-// If a task fails its downstream dependents are skipped, but other independent
-// tasks in later waves still execute.  Run returns the first error encountered
-// (or nil on full success).
+// Tasks are grouped into waves by topological depth. Tasks within the same
+// wave have no mutual dependencies and execute concurrently, bounded by the
+// MaxParallel semaphore. Independent branches are never abandoned when a
+// sibling or predecessor fails — only direct downstream dependents are skipped.
 func (o *Orchestrator) Run(ctx context.Context) error {
-	// Build internal task map.
 	coreTasks := make([]*Task, len(o.tasks))
 	for i, t := range o.tasks {
 		coreTasks[i] = &Task{Task: t, Status: "pending"}
@@ -87,22 +95,20 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		return err
 	}
 
-	// Build task map for status lookups.
 	taskMap := make(map[string]*Task, len(coreTasks))
 	for _, t := range coreTasks {
 		taskMap[t.ID] = t
 	}
 	var taskMapMu sync.RWMutex
 
-	executor := NewExecutor(o.sessionID, "", "", o.state) // provider/model populated below
+	executor := NewExecutor(o.sessionID, o.opts.Provider, o.opts.Model, o.state)
 
-	// Semaphore for MaxParallel.
 	var sem chan struct{}
 	if o.opts.MaxParallel > 0 {
 		sem = make(chan struct{}, o.opts.MaxParallel)
 	}
 
-	var firstErr atomic.Value // stores error
+	var firstErr atomic.Value // stores the first error encountered
 
 	for _, wave := range waves {
 		select {
@@ -112,12 +118,12 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		default:
 		}
 
-		// Filter wave: skip already-completed and dep-failed tasks.
+		// Determine which tasks in this wave are actually runnable.
 		runnable := make([]string, 0, len(wave))
 		for _, id := range wave {
 			task := graph.GetTask(id)
 
-			done, err := o.state.IsTaskCompleted(o.sessionID, id)
+			done, err := o.isCompleted(id)
 			if err != nil {
 				return fmt.Errorf("check completion for %s: %w", id, err)
 			}
@@ -130,7 +136,8 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			taskMapMu.RLock()
 			depFailed := false
 			for _, dep := range task.DependsOn {
-				if taskMap[dep].Status == "failed" || taskMap[dep].Status == "skipped" {
+				s := taskMap[dep].Status
+				if s == "failed" || s == "skipped" {
 					depFailed = true
 					break
 				}
@@ -138,7 +145,9 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			taskMapMu.RUnlock()
 
 			if depFailed {
+				taskMapMu.Lock()
 				task.Status = "skipped"
+				taskMapMu.Unlock()
 				o.eventCh <- Event{
 					Type:    EventTaskUpdate,
 					TaskID:  id,
@@ -155,7 +164,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			continue
 		}
 
-		// Execute all runnable tasks in this wave concurrently.
+		// Run all tasks in this wave concurrently.
 		var wg sync.WaitGroup
 		for _, id := range runnable {
 			wg.Add(1)

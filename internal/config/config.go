@@ -8,8 +8,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Marwanmorsy999/pivot/internal/paths"
 	"gopkg.in/yaml.v3"
+
+	"github.com/Marwanmorsy999/pivot/internal/paths"
 )
 
 type Config struct {

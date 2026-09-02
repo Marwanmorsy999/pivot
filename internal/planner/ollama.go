@@ -55,5 +55,5 @@ func (p *OllamaPlanner) Plan(goal string) ([]Task, error) {
 		return nil, fmt.Errorf("unmarshal response: %w", err)
 	}
 
-	return parseTasks(ollamaResp.Response)
+	return ParseTasks(ollamaResp.Response)
 }

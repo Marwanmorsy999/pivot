@@ -8,13 +8,13 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/spf13/cobra"
+
 	"github.com/Marwanmorsy999/pivot/internal/config"
 	"github.com/Marwanmorsy999/pivot/internal/core"
 	"github.com/Marwanmorsy999/pivot/internal/planner"
 	"github.com/Marwanmorsy999/pivot/internal/state"
 	"github.com/Marwanmorsy999/pivot/internal/tui"
-
-	"github.com/spf13/cobra"
 )
 
 var version = "dev"
@@ -194,7 +194,7 @@ func main() {
 				}
 			}
 
-			opts := core.OrchestratorOptions{MaxParallel: maxParallel}
+			opts := core.OrchestratorOptions{MaxParallel: maxParallel, Provider: cfg.Planner.Provider, Model: cfg.Planner.Model}
 			eventCh := make(chan core.Event, 100)
 			go func() {
 				orchestrator := core.NewOrchestrator(tasks, sessionID, s, eventCh, opts)
@@ -249,17 +249,19 @@ func main() {
 				return
 			}
 
+			// Always load config (needed for provider/model and fallback re-plan).
+			cfg, err := config.Load()
+			if err != nil {
+				fmt.Printf("❌ Failed to load config: %v\n", err)
+				return
+			}
+
 			// Load persisted task plan — avoids non-deterministic re-planning.
 			var tasks []planner.Task
 			savedJSON, err := s.GetSessionTasks(sessionID)
 			if err != nil || len(savedJSON) == 0 {
 				// Fallback: re-plan (old sessions without saved plan).
 				fmt.Println("⚠️  No persisted plan found, re-planning...")
-				cfg, err := config.Load()
-				if err != nil {
-					fmt.Printf("❌ Failed to load config: %v\n", err)
-					return
-				}
 				p := buildPlanner(cfg)
 				tasks, err = p.Plan(goal)
 				if err != nil {
@@ -276,7 +278,7 @@ func main() {
 			ctx, cancel := newSignalCtx()
 			defer cancel()
 
-			opts := core.OrchestratorOptions{MaxParallel: maxParallel}
+			opts := core.OrchestratorOptions{MaxParallel: maxParallel, Provider: cfg.Planner.Provider, Model: cfg.Planner.Model}
 			eventCh := make(chan core.Event, 100)
 			go func() {
 				orchestrator := core.NewOrchestrator(tasks, sessionID, s, eventCh, opts)

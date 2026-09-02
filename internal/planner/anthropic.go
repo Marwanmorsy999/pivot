@@ -100,11 +100,11 @@ func (p *AnthropicPlanner) Plan(goal string) ([]Task, error) {
 		return nil, fmt.Errorf("empty response from Anthropic")
 	}
 
-	return parseTasks(wrapper.Content[0].Text)
+	return ParseTasks(wrapper.Content[0].Text)
 }
 
-// parseTasks strips optional markdown fences and decodes the tasks JSON.
-func parseTasks(text string) ([]Task, error) {
+// ParseTasks strips optional markdown fences and decodes the tasks JSON.
+func ParseTasks(text string) ([]Task, error) {
 	text = strings.TrimSpace(text)
 	if strings.HasPrefix(text, "```") {
 		// Strip ```json ... ``` or ``` ... ```

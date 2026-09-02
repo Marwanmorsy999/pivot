@@ -47,10 +47,6 @@ var (
 			Foreground(lipgloss.Color("#626262")).
 			MarginLeft(1)
 
-	retryStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FFA500"))
-)
-
 type eventClosedMsg struct{}
 
 // Model is the Bubble Tea model for pivot's TUI.
@@ -366,5 +362,3 @@ func min(a, b int) int {
 	return b
 }
 
-// Silence unused import warning for retryStyle (used in future log lines).
-var _ = retryStyle

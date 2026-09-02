@@ -8,23 +8,6 @@ import (
 	"github.com/Marwanmorsy999/pivot/internal/planner"
 )
 
-// stubState is a minimal no-op state that marks nothing as completed.
-type stubState struct {
-	completed map[string]bool
-	logged    []string
-}
-
-func (s *stubState) IsTaskCompleted(sessionID, taskID string) (bool, error) {
-	return s.completed[taskID], nil
-}
-func (s *stubState) Log(entry interface{}) error {
-	return nil
-}
-
-// We can't use stubState directly with the real Orchestrator because it takes
-// *state.State. Instead we test the wave/parallel logic through the executor's
-// output map, using real "echo" commands.
-
 func makeOrcTasks(specs []struct {
 	id   string
 	tool string
@@ -44,15 +27,17 @@ func makeOrcTasks(specs []struct {
 	return tasks
 }
 
-// TestOrchestratorOptions_MaxParallel verifies that the semaphore field is set.
+// ── OrchestratorOptions ───────────────────────────────────────────────────────
+
 func TestOrchestratorOptions_MaxParallel(t *testing.T) {
 	opts := OrchestratorOptions{MaxParallel: 2}
 	if opts.MaxParallel != 2 {
-		t.Fatalf("expected MaxParallel=2, got %d", opts.MaxParallel)
+		t.Fatalf("expected 2, got %d", opts.MaxParallel)
 	}
 }
 
-// TestNewOrchestrator_Fields verifies constructor wires fields correctly.
+// ── NewOrchestrator ───────────────────────────────────────────────────────────
+
 func TestNewOrchestrator_Fields(t *testing.T) {
 	tasks := makeOrcTasks([]struct {
 		id   string
@@ -62,23 +47,24 @@ func TestNewOrchestrator_Fields(t *testing.T) {
 	}{{"a", "echo", []string{"hi"}, nil}})
 
 	eventCh := make(chan Event, 10)
-	o := NewOrchestrator(tasks, "sess", nil, eventCh, OrchestratorOptions{MaxParallel: 4})
+	o := NewOrchestrator(tasks, "sess-1", nil, eventCh, OrchestratorOptions{MaxParallel: 4})
 
-	if o.sessionID != "sess" {
-		t.Errorf("sessionID not set")
+	if o.sessionID != "sess-1" {
+		t.Errorf("sessionID mismatch: got %q", o.sessionID)
 	}
 	if len(o.tasks) != 1 {
-		t.Errorf("tasks not set")
+		t.Errorf("expected 1 task, got %d", len(o.tasks))
 	}
 	if o.opts.MaxParallel != 4 {
-		t.Errorf("opts not set")
+		t.Errorf("MaxParallel not wired: got %d", o.opts.MaxParallel)
 	}
 }
 
-// TestGraph_WavesUsedByOrchestrator is an integration smoke test:
-// verifies that parallel wave scheduling doesn't deadlock for a diamond graph.
-func TestGraph_WavesNoDeadlock(t *testing.T) {
-	specs := []struct {
+// ── Wave scheduling (via Graph) ───────────────────────────────────────────────
+
+func TestGraph_WavesNoDeadlock_Diamond(t *testing.T) {
+	// A → {B, C} → D  (classic diamond)
+	tasks := makeTasks([]struct {
 		id   string
 		deps []string
 	}{
@@ -86,46 +72,88 @@ func TestGraph_WavesNoDeadlock(t *testing.T) {
 		{"B", []string{"A"}},
 		{"C", []string{"A"}},
 		{"D", []string{"B", "C"}},
-	}
-	tasks := makeTasks(specs)
+	})
 	g := NewGraph(tasks)
 	waves, err := g.Waves()
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Verify wave structure
 	if len(waves) != 3 {
-		t.Fatalf("expected 3 waves, got %d", len(waves))
+		t.Fatalf("expected 3 waves, got %d: %v", len(waves), waves)
+	}
+	if len(waves[1]) != 2 {
+		t.Fatalf("wave 1 should contain B and C, got %v", waves[1])
 	}
 }
 
-// TestOrchestratorContext_Cancellation verifies ctx.Done() is respected.
-func TestOrchestratorContext_Cancellation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // cancel immediately
+// ── Context cancellation ──────────────────────────────────────────────────────
 
+func TestOrchestratorRun_ContextCancellation(t *testing.T) {
+	// Orchestrator with nil state and a pre-cancelled context should
+	// return quickly (not hang) and not panic.
 	tasks := makeOrcTasks([]struct {
 		id   string
 		tool string
 		args []string
 		deps []string
-	}{{"a", "echo", []string{"hi"}, nil}})
+	}{
+		{"a", "sleep", []string{"60"}, nil},
+	})
 
-	eventCh := make(chan Event, 10)
-	o := NewOrchestrator(tasks, "sess", nil, eventCh, OrchestratorOptions{})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel before Run is called
+
+	eventCh := make(chan Event, 20)
+	o := NewOrchestrator(tasks, "sess-cancel", nil, eventCh, OrchestratorOptions{})
 
 	done := make(chan error, 1)
-	go func() {
-		done <- o.Run(ctx)
-	}()
+	go func() { done <- o.Run(ctx) }()
 
 	select {
-	case err := <-done:
-		if err == nil {
-			// Cancelled ctx may still complete fast echo — that's fine.
-			// Main thing: it didn't hang.
-		}
+	case <-done:
+		// returned — good
 	case <-time.After(5 * time.Second):
 		t.Fatal("orchestrator did not respect context cancellation within 5s")
+	}
+}
+
+// ── Dep-failure isolation ─────────────────────────────────────────────────────
+
+func TestOrchestratorRun_DepFailureSkipsDownstream(t *testing.T) {
+	// a (bad command) → b depends on a → c is independent
+	// Expected: b skipped, c runs, overall returns error
+	tasks := makeOrcTasks([]struct {
+		id   string
+		tool string
+		args []string
+		deps []string
+	}{
+		{"a", "sh", []string{"-c", "exit 1"}, nil},
+		{"b", "echo", []string{"$OUTPUT[a]"}, []string{"a"}},
+		{"c", "echo", []string{"independent"}, nil},
+	})
+
+	eventCh := make(chan Event, 50)
+	o := NewOrchestrator(tasks, "sess-depfail", nil, eventCh, OrchestratorOptions{MaxParallel: 4})
+
+	err := o.Run(context.Background())
+	// Overall run should return an error (a failed)
+	if err == nil {
+		t.Fatal("expected error when a task fails")
+	}
+
+	// Drain events and check c completed
+	close(eventCh)
+	statuses := map[string]string{}
+	for ev := range eventCh {
+		if ev.Type == EventTaskUpdate {
+			statuses[ev.TaskID] = ev.Status
+		}
+	}
+	if statuses["c"] != "completed" {
+		t.Errorf("independent task c should have completed, got %q", statuses["c"])
+	}
+	if statuses["b"] != "skipped" {
+		t.Errorf("downstream task b should be skipped, got %q", statuses["b"])
 	}
 }

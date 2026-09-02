@@ -9,9 +9,10 @@ import (
 	"github.com/Marwanmorsy999/pivot/internal/planner"
 )
 
-// newTestExecutor returns an executor with a nil State (logging is no-op in tests).
+// newTestExecutor returns an Executor with nil State (logging is a no-op).
+// The semaphore is pre-seeded so lock/unlock work immediately.
 func newTestExecutor() *Executor {
-	return &Executor{
+	e := &Executor{
 		State:     nil,
 		SessionID: "test-session",
 		Provider:  "ollama",
@@ -19,20 +20,11 @@ func newTestExecutor() *Executor {
 		Outputs:   make(map[string]string),
 		mu:        make(chan struct{}, 1),
 	}
-}
-
-func init() {
-	// Seed semaphore so tests can call lock/unlock.
-	// (done in NewExecutor; we replicate it for newTestExecutor)
-}
-
-func withSem(e *Executor) *Executor {
-	e.mu <- struct{}{}
+	e.mu <- struct{}{} // seed semaphore (mirrors NewExecutor)
 	return e
 }
 
-// stubTask builds a minimal Task for testing.
-func stubTask(id, tool string, args []string, deps []string) *Task {
+func stubTask(id, tool string, args, deps []string) *Task {
 	return &Task{
 		Task: planner.Task{
 			ID:        id,
@@ -45,8 +37,8 @@ func stubTask(id, tool string, args []string, deps []string) *Task {
 	}
 }
 
-func TestExecutor_ResolveArgs_LegacyOUTPUT(t *testing.T) {
-	e := withSem(newTestExecutor())
+func TestResolveArgs_LegacyOUTPUT(t *testing.T) {
+	e := newTestExecutor()
 	e.SetOutput("dep-1", "hello-world")
 
 	task := stubTask("t", "echo", []string{"$OUTPUT"}, []string{"dep-1"})
@@ -59,8 +51,8 @@ func TestExecutor_ResolveArgs_LegacyOUTPUT(t *testing.T) {
 	}
 }
 
-func TestExecutor_ResolveArgs_NamedOUTPUT(t *testing.T) {
-	e := withSem(newTestExecutor())
+func TestResolveArgs_NamedOUTPUT(t *testing.T) {
+	e := newTestExecutor()
 	e.SetOutput("step-a", "result-a")
 	e.SetOutput("step-b", "result-b")
 
@@ -80,8 +72,8 @@ func TestExecutor_ResolveArgs_NamedOUTPUT(t *testing.T) {
 	}
 }
 
-func TestExecutor_ResolveArgs_MissingNamedDep(t *testing.T) {
-	e := withSem(newTestExecutor())
+func TestResolveArgs_MissingNamedDep(t *testing.T) {
+	e := newTestExecutor()
 	task := stubTask("t", "echo", []string{"$OUTPUT[missing]"}, []string{"missing"})
 	_, err := e.resolveArgs(task)
 	if err == nil {
@@ -89,17 +81,32 @@ func TestExecutor_ResolveArgs_MissingNamedDep(t *testing.T) {
 	}
 }
 
-func TestExecutor_ResolveArgs_NoDepForOUTPUT(t *testing.T) {
-	e := withSem(newTestExecutor())
+func TestResolveArgs_NoDepForOUTPUT(t *testing.T) {
+	e := newTestExecutor()
 	task := stubTask("t", "echo", []string{"$OUTPUT"}, nil)
 	_, err := e.resolveArgs(task)
 	if err == nil || !strings.Contains(err.Error(), "no dependencies") {
-		t.Fatalf("expected no-dep error, got: %v", err)
+		t.Fatalf("expected 'no dependencies' error, got: %v", err)
 	}
 }
 
-func TestExecutor_CommandForTool_Allowed(t *testing.T) {
-	allowed := []string{"echo", "grep", "curl", "git", "jq", "sh", "bash", "python3", "docker", "aws"}
+func TestResolveArgs_NoSubstitution(t *testing.T) {
+	e := newTestExecutor()
+	task := stubTask("t", "echo", []string{"plain-arg", "--flag=value"}, nil)
+	args, err := e.resolveArgs(task)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if args[0] != "plain-arg" || args[1] != "--flag=value" {
+		t.Fatalf("args should be unchanged: %v", args)
+	}
+}
+
+func TestCommandForTool_Allowed(t *testing.T) {
+	allowed := []string{
+		"echo", "grep", "curl", "git", "jq", "sh", "bash",
+		"python3", "docker", "aws", "sleep",
+	}
 	for _, tool := range allowed {
 		_, err := commandForTool(context.Background(), tool, nil)
 		if err != nil {
@@ -108,46 +115,53 @@ func TestExecutor_CommandForTool_Allowed(t *testing.T) {
 	}
 }
 
-func TestExecutor_CommandForTool_Denied(t *testing.T) {
-	denied := []string{"nc", "ncat", "socat", "python2", "perl", "ruby", "php"}
+func TestCommandForTool_Denied(t *testing.T) {
+	denied := []string{"nc", "ncat", "socat", "perl", "ruby", "php", "notarealtool"}
 	for _, tool := range denied {
 		_, err := commandForTool(context.Background(), tool, nil)
 		if err == nil {
-			t.Errorf("tool %q should be denied but was allowed", tool)
+			t.Errorf("tool %q should be denied", tool)
 		}
 	}
 }
 
-func TestExecutor_Timeout(t *testing.T) {
-	e := withSem(newTestExecutor())
+func TestSetGetOutput_Concurrent(t *testing.T) {
+	e := newTestExecutor()
+	done := make(chan struct{})
+	go func() {
+		for i := 0; i < 200; i++ {
+			e.SetOutput("key", "value")
+		}
+		close(done)
+	}()
+	for i := 0; i < 200; i++ {
+		e.GetOutput("key")
+	}
+	<-done
+}
+
+func TestExecute_ContextTimeout(t *testing.T) {
+	e := newTestExecutor()
 	eventCh := make(chan Event, 10)
 
-	// "sleep 10" with a 100ms timeout — should fail fast.
 	task := &Task{
 		Task: planner.Task{
 			ID:         "slow",
 			Type:       planner.TypeTool,
-			Tool:       "sleep",
-			Args:       []string{"10"},
-			TimeoutSec: 0, // will use default — override below
+			Tool:       "sh",
+			Args:       []string{"-c", "sleep 10"},
+			TimeoutSec: 30,
 		},
 		Status: "pending",
 	}
-	task.TimeoutSec = 0 // force defaultTimeoutSec path
 
-	// Use a context that expires quickly.
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
 	start := time.Now()
-	// sleep is not in our allowlist — use sh instead
-	task.Tool = "sh"
-	task.Args = []string{"-c", "sleep 10"}
-
 	err := e.Execute(ctx, task, eventCh)
 	elapsed := time.Since(start)
 
-	// Should have returned well before 10s
 	if elapsed > 3*time.Second {
 		t.Fatalf("Execute took %v — timeout not respected", elapsed)
 	}
@@ -156,20 +170,9 @@ func TestExecutor_Timeout(t *testing.T) {
 	}
 }
 
-func TestExecutor_SetGetOutput_Concurrent(t *testing.T) {
-	e := withSem(newTestExecutor())
-	done := make(chan struct{})
-
-	// Write and read concurrently — race detector will catch issues.
-	go func() {
-		for i := 0; i < 100; i++ {
-			e.SetOutput("key", "value")
-		}
-		close(done)
-	}()
-	for i := 0; i < 100; i++ {
-		e.GetOutput("key")
-	}
-	<-done
+func TestExecute_NilStateNoPanic(t *testing.T) {
+	e := newTestExecutor() // State is nil
+	eventCh := make(chan Event, 10)
+	task := stubTask("t", "echo", []string{"hello"}, nil)
+	_ = e.Execute(context.Background(), task, eventCh)
 }
-

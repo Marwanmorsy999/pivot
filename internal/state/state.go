@@ -8,8 +8,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Marwanmorsy999/pivot/internal/paths"
 	_ "github.com/mattn/go-sqlite3"
+
+	"github.com/Marwanmorsy999/pivot/internal/paths"
 )
 
 // JournalEntry represents a single logged task execution.

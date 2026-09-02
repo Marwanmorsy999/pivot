@@ -75,5 +75,5 @@ func (p *OpenAPlanner) Plan(goal string) ([]Task, error) {
 		return nil, fmt.Errorf("no response choices from API")
 	}
 
-	return parseTasks(wrapper.Choices[0].Message.Content)
+	return ParseTasks(wrapper.Choices[0].Message.Content)
 }
