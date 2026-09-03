@@ -27,16 +27,12 @@ func makeOrcTasks(specs []struct {
 	return tasks
 }
 
-// ── OrchestratorOptions ───────────────────────────────────────────────────────
-
 func TestOrchestratorOptions_MaxParallel(t *testing.T) {
 	opts := OrchestratorOptions{MaxParallel: 2}
 	if opts.MaxParallel != 2 {
 		t.Fatalf("expected 2, got %d", opts.MaxParallel)
 	}
 }
-
-// ── NewOrchestrator ───────────────────────────────────────────────────────────
 
 func TestNewOrchestrator_Fields(t *testing.T) {
 	tasks := makeOrcTasks([]struct {
@@ -60,10 +56,7 @@ func TestNewOrchestrator_Fields(t *testing.T) {
 	}
 }
 
-// ── Wave scheduling (via Graph) ───────────────────────────────────────────────
-
 func TestGraph_WavesNoDeadlock_Diamond(t *testing.T) {
-	// A → {B, C} → D  (classic diamond)
 	tasks := makeTasks([]struct {
 		id   string
 		deps []string
@@ -86,11 +79,7 @@ func TestGraph_WavesNoDeadlock_Diamond(t *testing.T) {
 	}
 }
 
-// ── Context cancellation ──────────────────────────────────────────────────────
-
 func TestOrchestratorRun_ContextCancellation(t *testing.T) {
-	// Orchestrator with nil state and a pre-cancelled context should
-	// return quickly (not hang) and not panic.
 	tasks := makeOrcTasks([]struct {
 		id   string
 		tool string
@@ -101,9 +90,10 @@ func TestOrchestratorRun_ContextCancellation(t *testing.T) {
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // cancel before Run is called
+	cancel() // cancel immediately before Run
 
-	eventCh := make(chan Event, 20)
+	// Large buffer so Run() can always write EventComplete/EventError without blocking
+	eventCh := make(chan Event, 50)
 	o := NewOrchestrator(tasks, "sess-cancel", nil, eventCh, OrchestratorOptions{})
 
 	done := make(chan error, 1)
@@ -111,17 +101,14 @@ func TestOrchestratorRun_ContextCancellation(t *testing.T) {
 
 	select {
 	case <-done:
-		// returned — good
+		// returned quickly — good
 	case <-time.After(5 * time.Second):
 		t.Fatal("orchestrator did not respect context cancellation within 5s")
 	}
 }
 
-// ── Dep-failure isolation ─────────────────────────────────────────────────────
-
 func TestOrchestratorRun_DepFailureSkipsDownstream(t *testing.T) {
-	// a (bad command) → b depends on a → c is independent
-	// Expected: b skipped, c runs, overall returns error
+	// a fails → b (depends on a) should be skipped → c (independent) should complete
 	tasks := makeOrcTasks([]struct {
 		id   string
 		tool string
@@ -129,27 +116,38 @@ func TestOrchestratorRun_DepFailureSkipsDownstream(t *testing.T) {
 		deps []string
 	}{
 		{"a", "sh", []string{"-c", "exit 1"}, nil},
-		{"b", "echo", []string{"$OUTPUT[a]"}, []string{"a"}},
+		{"b", "echo", []string{"downstream"}, []string{"a"}},
 		{"c", "echo", []string{"independent"}, nil},
 	})
 
-	eventCh := make(chan Event, 50)
+	// Large buffer: Run() writes EventComplete at the end; we must not close
+	// before Run() returns or we get a send-on-closed-channel panic.
+	eventCh := make(chan Event, 100)
 	o := NewOrchestrator(tasks, "sess-depfail", nil, eventCh, OrchestratorOptions{MaxParallel: 4})
 
 	err := o.Run(context.Background())
-	// Overall run should return an error (a failed)
 	if err == nil {
 		t.Fatal("expected error when a task fails")
 	}
 
-	// Drain events and check c completed
-	close(eventCh)
+	// Drain without closing — Run() already wrote EventComplete.
 	statuses := map[string]string{}
-	for ev := range eventCh {
-		if ev.Type == EventTaskUpdate {
-			statuses[ev.TaskID] = ev.Status
+	draining := true
+	for draining {
+		select {
+		case ev, ok := <-eventCh:
+			if !ok {
+				draining = false
+			} else if ev.Type == EventTaskUpdate {
+				statuses[ev.TaskID] = ev.Status
+			} else if ev.Type == EventComplete || ev.Type == EventError {
+				draining = false
+			}
+		default:
+			draining = false
 		}
 	}
+
 	if statuses["c"] != "completed" {
 		t.Errorf("independent task c should have completed, got %q", statuses["c"])
 	}

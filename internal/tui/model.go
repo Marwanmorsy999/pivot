@@ -5,14 +5,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Marwanmorsy999/pivot/internal/core"
-	"github.com/Marwanmorsy999/pivot/internal/planner"
-
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/Marwanmorsy999/pivot/internal/core"
+	"github.com/Marwanmorsy999/pivot/internal/planner"
 )
 
 var (
@@ -46,6 +46,7 @@ var (
 	helpStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#626262")).
 			MarginLeft(1)
+)
 
 type eventClosedMsg struct{}
 
@@ -73,10 +74,8 @@ type Model struct {
 func NewModel(sessionID, goal string, tasks []planner.Task, eventCh <-chan core.Event) *Model {
 	taskMap := make(map[string]*core.Task, len(tasks))
 	taskOrder := make([]string, len(tasks))
-
 	for i, t := range tasks {
-		ct := &core.Task{Task: t, Status: "pending"}
-		taskMap[t.ID] = ct
+		taskMap[t.ID] = &core.Task{Task: t, Status: "pending"}
 		taskOrder[i] = t.ID
 	}
 
@@ -88,16 +87,11 @@ func NewModel(sessionID, goal string, tasks []planner.Task, eventCh <-chan core.
 		{Title: "Status", Width: 10},
 		{Title: "Cost", Width: 10},
 	}
-
 	rows := make([]table.Row, len(tasks))
 	for i, t := range tasks {
 		rows[i] = table.Row{
-			truncate(t.ID, 16),
-			string(t.Type),
-			truncate(t.Tool, 14),
-			truncate(t.Description, 30),
-			"pending",
-			"$0.000000",
+			truncate(t.ID, 16), string(t.Type), truncate(t.Tool, 14),
+			truncate(t.Description, 30), "pending", "$0.000000",
 		}
 	}
 
@@ -116,8 +110,6 @@ func NewModel(sessionID, goal string, tasks []planner.Task, eventCh <-chan core.
 		Cell:   lipgloss.NewStyle().Foreground(lipgloss.Color("#EEEEEE")),
 	})
 
-	vp := viewport.New(80, 8)
-
 	return &Model{
 		sessionID: sessionID,
 		goal:      goal,
@@ -125,43 +117,35 @@ func NewModel(sessionID, goal string, tasks []planner.Task, eventCh <-chan core.
 		taskOrder: taskOrder,
 		eventCh:   eventCh,
 		spinner:   s,
-		viewport:  vp,
+		viewport:  viewport.New(80, 8),
 		table:     tbl,
 		startTime: time.Now(),
 		width:     80,
 	}
 }
 
-// Init starts the spinner tick and begins listening for events.
+// Init starts the spinner and begins listening for events.
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(
-		m.spinner.Tick,
-		m.waitForEvent(),
-	)
+	return tea.Batch(m.spinner.Tick, m.waitForEvent())
 }
 
-// Update handles all incoming messages. Pointer receiver ensures state persists.
+// Update handles all incoming messages.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.viewport.Width = msg.Width
 		return m, m.waitForEvent()
-
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "q", "ctrl+c":
+		if msg.String() == "q" || msg.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
-
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, tea.Batch(cmd, m.waitForEvent())
-
 	case core.Event:
 		return m.handleEvent(msg)
-
 	case eventClosedMsg:
 		m.done = true
 		if m.finalMsg == "" {
@@ -169,7 +153,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
-
 	return m, m.waitForEvent()
 }
 
@@ -177,27 +160,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) View() string {
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render("⚡ PIVOT — Hybrid CLI Orchestrator"))
-	b.WriteString("\n")
+	b.WriteString(titleStyle.Render("⚡ PIVOT — Hybrid CLI Orchestrator") + "\n")
 	fmt.Fprintf(&b, "  Session : %s\n", m.sessionID)
 	fmt.Fprintf(&b, "  Goal    : %s\n", truncate(m.goal, m.width-12))
-	fmt.Fprintf(&b, "  Runtime : %s\n", time.Since(m.startTime).Round(time.Second))
-	b.WriteString("\n")
+	fmt.Fprintf(&b, "  Runtime : %s\n\n", time.Since(m.startTime).Round(time.Second))
 
-	b.WriteString(titleStyle.Render("📋 Tasks"))
-	b.WriteString("\n")
-	b.WriteString(m.table.View())
-	b.WriteString("\n\n")
+	b.WriteString(titleStyle.Render("📋 Tasks") + "\n")
+	b.WriteString(m.table.View() + "\n\n")
 
-	b.WriteString(costStyle.Render(
-		fmt.Sprintf("💰 Cost: $%.6f  |  🔤 Tokens: %d", m.totalCost, m.totalTokens),
-	))
-	b.WriteString("\n\n")
+	b.WriteString(costStyle.Render(fmt.Sprintf(
+		"💰 Cost: $%.6f  |  🔤 Tokens: %d", m.totalCost, m.totalTokens,
+	)) + "\n\n")
 
-	b.WriteString(titleStyle.Render("📜 Log"))
-	b.WriteString("\n")
-
-	// Show last 8 log lines; wire the viewport for scroll if needed.
+	b.WriteString(titleStyle.Render("📜 Log") + "\n")
 	logs := m.events
 	if len(logs) > 8 {
 		logs = logs[len(logs)-8:]
@@ -220,10 +195,7 @@ func (m *Model) View() string {
 		b.WriteString("\n")
 	}
 
-	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("  q / ctrl+c: quit"))
-	b.WriteString("\n")
-
+	b.WriteString("\n" + helpStyle.Render("  q / ctrl+c: quit") + "\n")
 	return b.String()
 }
 
@@ -252,17 +224,13 @@ func (m *Model) handleEvent(ev core.Event) (tea.Model, tea.Cmd) {
 			task.Error = ev.Error
 		}
 
-		// Build log line — include retry annotation if present.
 		annotation := ev.Status
 		if ev.Message != "" {
 			annotation = fmt.Sprintf("%s (%s)", ev.Status, ev.Message)
 		}
 		m.events = append(m.events, fmt.Sprintf(
 			"[%s] %s %s — %s",
-			time.Now().Format("15:04:05"),
-			styleStatus(ev.Status),
-			ev.TaskID,
-			annotation,
+			time.Now().Format("15:04:05"), styleStatus(ev.Status), ev.TaskID, annotation,
 		))
 		if ev.Error != "" {
 			m.events = append(m.events, fmt.Sprintf(
@@ -270,7 +238,6 @@ func (m *Model) handleEvent(ev core.Event) (tea.Model, tea.Cmd) {
 			))
 		}
 
-		// Refresh table row.
 		rows := m.table.Rows()
 		for i, row := range rows {
 			if row[0] == truncate(ev.TaskID, 16) {
@@ -279,12 +246,9 @@ func (m *Model) handleEvent(ev core.Event) (tea.Model, tea.Cmd) {
 					costStr = fmt.Sprintf("$%.6f", task.Cost)
 				}
 				rows[i] = table.Row{
-					truncate(ev.TaskID, 16),
-					string(task.Type),
-					truncate(task.Tool, 14),
-					truncate(task.Description, 30),
-					ev.Status,
-					costStr,
+					truncate(ev.TaskID, 16), string(task.Type),
+					truncate(task.Tool, 14), truncate(task.Description, 30),
+					ev.Status, costStr,
 				}
 				break
 			}
@@ -297,10 +261,8 @@ func (m *Model) handleEvent(ev core.Event) (tea.Model, tea.Cmd) {
 		m.totalTokens = ev.Tokens
 		m.finalMsg = ev.Message
 		m.events = append(m.events, fmt.Sprintf(
-			"[%s] %s %s",
-			time.Now().Format("15:04:05"),
-			completedStyle.Render("✓"),
-			ev.Message,
+			"[%s] %s %s", time.Now().Format("15:04:05"),
+			completedStyle.Render("✓"), ev.Message,
 		))
 		return m, nil
 
@@ -308,10 +270,8 @@ func (m *Model) handleEvent(ev core.Event) (tea.Model, tea.Cmd) {
 		m.done = true
 		m.finalMsg = fmt.Sprintf("❌ Error: %s", ev.Message)
 		m.events = append(m.events, fmt.Sprintf(
-			"[%s] %s %s",
-			time.Now().Format("15:04:05"),
-			failedStyle.Render("✗"),
-			ev.Message,
+			"[%s] %s %s", time.Now().Format("15:04:05"),
+			failedStyle.Render("✗"), ev.Message,
 		))
 		return m, nil
 	}
@@ -319,8 +279,7 @@ func (m *Model) handleEvent(ev core.Event) (tea.Model, tea.Cmd) {
 	return m, m.waitForEvent()
 }
 
-// Run starts the Bubble Tea program. The model is passed as a pointer so
-// the program mutates a single instance (avoids value-copy TUI bugs).
+// Run starts the Bubble Tea program with alt-screen mode.
 func (m *Model) Run() error {
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err := p.Run()
@@ -342,23 +301,12 @@ func styleStatus(status string) string {
 	}
 }
 
-func truncate(s string, max int) string {
-	if max <= 0 {
+func truncate(s string, maxLen int) string {
+	if maxLen <= 0 || len(s) <= maxLen {
 		return s
 	}
-	if len(s) <= max {
-		return s
+	if maxLen <= 3 {
+		return s[:maxLen]
 	}
-	if max <= 3 {
-		return s[:max]
-	}
-	return s[:max-3] + "..."
+	return s[:maxLen-3] + "..."
 }
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
