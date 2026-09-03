@@ -73,7 +73,7 @@ func (p *AnthropicPlanner) Plan(goal string) ([]Task, error) {
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 90 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := client.Do(req) // #nosec G107 -- endpoint is user-configured via config file
 	if err != nil {
 		return nil, fmt.Errorf("request to Anthropic: %w", err)
 	}
