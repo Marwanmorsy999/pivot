@@ -43,7 +43,7 @@ func NewExecutor(sessionID, provider, model string, s *state.State) *Executor {
 		Outputs:   make(map[string]string),
 		mu:        make(chan struct{}, 1),
 	}
-	e.mu <- struct{}{} // initialise as unlocked
+	e.mu <- struct{}{} // initialize as unlocked
 	return e
 }
 
