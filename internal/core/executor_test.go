@@ -140,7 +140,7 @@ func TestSetGetOutput_Concurrent(t *testing.T) {
 	<-done
 }
 
-// ── Execute: pre-cancelled context ─────────────────────────────────────────────
+// ── Execute: pre-canceled context ─────────────────────────────────────────────
 
 func TestExecute_PreCancelledContext(t *testing.T) {
 	e := newTestExecutor()
@@ -149,7 +149,7 @@ func TestExecute_PreCancelledContext(t *testing.T) {
 	// Use a task with per-task timeout of 1s but cancel the parent ctx immediately.
 	task := &Task{
 		Task: planner.Task{
-			ID:         "cancelled",
+			ID:         "canceled",
 			Type:       planner.TypeTool,
 			Tool:       "sh",
 			Args:       []string{"-c", "sleep 5"},
@@ -168,10 +168,10 @@ func TestExecute_PreCancelledContext(t *testing.T) {
 
 	// Should return quickly (well under 1 second) because ctx is already done.
 	if elapsed > 2*time.Second {
-		t.Fatalf("Execute with pre-cancelled ctx took %v — should be near-instant", elapsed)
+		t.Fatalf("Execute with pre-canceled ctx took %v — should be near-instant", elapsed)
 	}
 	if err == nil {
-		t.Fatal("expected error from cancelled context")
+		t.Fatal("expected error from canceled context")
 	}
 }
 
