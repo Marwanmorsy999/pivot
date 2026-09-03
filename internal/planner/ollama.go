@@ -37,7 +37,7 @@ func (p *OllamaPlanner) Plan(goal string) ([]Task, error) {
 	}
 
 	client := &http.Client{Timeout: 120 * time.Second}
-	resp, err := client.Post(p.Endpoint+"/api/generate", "application/json", bytes.NewBuffer(jsonData))
+	resp, err := client.Post(p.Endpoint+"/api/generate", "application/json", bytes.NewBuffer(jsonData)) // #nosec G107 -- endpoint is user-configured via config file
 	if err != nil {
 		return nil, fmt.Errorf("request to Ollama: %w", err)
 	}
