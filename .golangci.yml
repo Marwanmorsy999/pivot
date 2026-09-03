@@ -55,13 +55,3 @@ output:
     - format: colored-line-number
       path: stdout
 
-formatters:
-  enable:
-    - goimports
-  settings:
-    goimports:
-      local-prefixes:
-        - github.com/Marwanmorsy999/pivot
-  exclusions:
-    paths:
-      - internal/tui/model\.go$
