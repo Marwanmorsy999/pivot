@@ -31,7 +31,7 @@ type Event struct {
 	Tokens  int
 }
 
-// OrchestratorOptions configures runtime behaviour.
+// OrchestratorOptions configures runtime behavior.
 type OrchestratorOptions struct {
 	// MaxParallel is the maximum number of tasks that may run concurrently.
 	// 0 means unlimited (all tasks in a wave run at once).
