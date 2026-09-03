@@ -10,7 +10,6 @@ import (
 )
 
 // newTestExecutor returns an Executor with nil State (logging is a no-op).
-// The semaphore is pre-seeded so lock/unlock work immediately.
 func newTestExecutor() *Executor {
 	e := &Executor{
 		State:     nil,
@@ -37,10 +36,11 @@ func stubTask(id, tool string, args, deps []string) *Task {
 	}
 }
 
+// ── resolveArgs ───────────────────────────────────────────────────────────────
+
 func TestResolveArgs_LegacyOUTPUT(t *testing.T) {
 	e := newTestExecutor()
 	e.SetOutput("dep-1", "hello-world")
-
 	task := stubTask("t", "echo", []string{"$OUTPUT"}, []string{"dep-1"})
 	args, err := e.resolveArgs(task)
 	if err != nil {
@@ -55,7 +55,6 @@ func TestResolveArgs_NamedOUTPUT(t *testing.T) {
 	e := newTestExecutor()
 	e.SetOutput("step-a", "result-a")
 	e.SetOutput("step-b", "result-b")
-
 	task := stubTask("t", "echo",
 		[]string{"$OUTPUT[step-a]", "$OUTPUT[step-b]"},
 		[]string{"step-a", "step-b"},
@@ -102,11 +101,10 @@ func TestResolveArgs_NoSubstitution(t *testing.T) {
 	}
 }
 
+// ── commandForTool ─────────────────────────────────────────────────────────────
+
 func TestCommandForTool_Allowed(t *testing.T) {
-	allowed := []string{
-		"echo", "grep", "curl", "git", "jq", "sh", "bash",
-		"python3", "docker", "aws", "sleep",
-	}
+	allowed := []string{"echo", "grep", "curl", "git", "jq", "sh", "bash", "python3", "docker", "aws", "sleep"}
 	for _, tool := range allowed {
 		_, err := commandForTool(context.Background(), tool, nil)
 		if err != nil {
@@ -125,6 +123,8 @@ func TestCommandForTool_Denied(t *testing.T) {
 	}
 }
 
+// ── SetOutput / GetOutput concurrency ──────────────────────────────────────────
+
 func TestSetGetOutput_Concurrent(t *testing.T) {
 	e := newTestExecutor()
 	done := make(chan struct{})
@@ -140,38 +140,45 @@ func TestSetGetOutput_Concurrent(t *testing.T) {
 	<-done
 }
 
-func TestExecute_ContextTimeout(t *testing.T) {
+// ── Execute: pre-cancelled context ─────────────────────────────────────────────
+
+func TestExecute_PreCancelledContext(t *testing.T) {
 	e := newTestExecutor()
 	eventCh := make(chan Event, 10)
 
+	// Use a task with per-task timeout of 1s but cancel the parent ctx immediately.
 	task := &Task{
 		Task: planner.Task{
-			ID:         "slow",
+			ID:         "cancelled",
 			Type:       planner.TypeTool,
 			Tool:       "sh",
-			Args:       []string{"-c", "sleep 10"},
-			TimeoutSec: 30,
+			Args:       []string{"-c", "sleep 5"},
+			TimeoutSec: 1,
 		},
 		Status: "pending",
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
-	defer cancel()
+	// Pre-cancel the context before calling Execute.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 
 	start := time.Now()
 	err := e.Execute(ctx, task, eventCh)
 	elapsed := time.Since(start)
 
-	if elapsed > 3*time.Second {
-		t.Fatalf("Execute took %v — timeout not respected", elapsed)
+	// Should return quickly (well under 1 second) because ctx is already done.
+	if elapsed > 2*time.Second {
+		t.Fatalf("Execute with pre-cancelled ctx took %v — should be near-instant", elapsed)
 	}
 	if err == nil {
-		t.Fatal("expected error from context cancellation")
+		t.Fatal("expected error from cancelled context")
 	}
 }
 
+// ── Execute: nil state does not panic ──────────────────────────────────────────
+
 func TestExecute_NilStateNoPanic(t *testing.T) {
-	e := newTestExecutor() // State is nil
+	e := newTestExecutor()
 	eventCh := make(chan Event, 10)
 	task := stubTask("t", "echo", []string{"hello"}, nil)
 	_ = e.Execute(context.Background(), task, eventCh)

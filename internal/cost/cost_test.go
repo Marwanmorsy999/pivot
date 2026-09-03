@@ -56,8 +56,8 @@ func TestEstimateCost_NonZeroForAnthropic(t *testing.T) {
 		t.Error("anthropic cost should be non-zero")
 	}
 	// 1000 input tokens at $3/1M + 500 output at $15/1M
-	// = 0.000003 + 0.0000075 = 0.0000105
-	if c < 0.000001 || c > 0.01 {
+	// = 1000*0.000003 + 500*0.000015 = 0.003 + 0.0075 = 0.0105
+	if c < 0.001 || c > 0.1 {
 		t.Errorf("anthropic cost out of expected range: %f", c)
 	}
 }
