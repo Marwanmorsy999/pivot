@@ -40,7 +40,7 @@ RULES:
 - Return ONLY a JSON object {"tasks": [...]} — no markdown, no explanation
 - Every task must have: id (short slug), type, tool, args (array), depends_on (array), description
 - Optional: timeout_sec (integer, default 300), retries (integer, default 0)
-- IDs must be unique slugs (e.g. "fetch-data", "parse-json", "summarise")
+- IDs must be unique slugs (e.g. "fetch-data", "parse-json", "summarize")
 - depends_on must only reference IDs defined in the same plan`
 
 func (p *AnthropicPlanner) Plan(goal string) ([]Task, error) {
