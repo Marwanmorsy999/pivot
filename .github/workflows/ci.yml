@@ -42,7 +42,15 @@ jobs:
         run: CGO_ENABLED=1 go build -v ./... 2>&1
 
       - name: Run tests with race detector
-        run: CGO_ENABLED=1 go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+        run: |
+          set -o pipefail
+          CGO_ENABLED=1 go test -v -race -coverprofile=coverage.out -covermode=atomic ./... 2>&1 | tee /tmp/test.log || {
+            echo "=== FAILED TESTS ==="
+            grep -E "^--- FAIL|^FAIL|panic:" /tmp/test.log | head -50
+            echo "=== PANIC/ERROR DETAIL ==="
+            grep -B2 -A10 "panic:\|FAIL	" /tmp/test.log | head -100
+            exit 1
+          }
 
       - name: Print coverage summary
         run: go tool cover -func=coverage.out
