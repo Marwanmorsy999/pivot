@@ -42,7 +42,7 @@ jobs:
         run: CGO_ENABLED=1 go build -v ./... 2>&1
 
       - name: Run tests with race detector
-        run: CGO_ENABLED=1 go test -v -race -coverprofile=coverage.out -covermode=atomic ./... 2>&1 | tee /tmp/test-output.txt; echo 'Exit:' $?
+        run: CGO_ENABLED=1 go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Print coverage summary
         run: go tool cover -func=coverage.out
@@ -74,11 +74,23 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      - name: Check goimports
+        run: |
+          go install golang.org/x/tools/cmd/goimports@latest
+          OUT=$(goimports -local github.com/Marwanmorsy999/pivot -l             $(find . -name "*.go" -not -path "*/vendor/*" -not -name "model.go") 2>&1)
+          if [ -n "$OUT" ]; then
+            echo "goimports found issues in:"
+            echo "$OUT"
+            goimports -local github.com/Marwanmorsy999/pivot -d               $(find . -name "*.go" -not -path "*/vendor/*" -not -name "model.go")
+            exit 1
+          fi
+          echo "All imports clean"
+
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.13.2
-          args: --timeout=5m --verbose
+          args: --timeout=5m
 
   build:
     name: Build
