@@ -45,10 +45,13 @@ jobs:
         run: |
           set -o pipefail
           CGO_ENABLED=1 go test -v -race -coverprofile=coverage.out -covermode=atomic ./... 2>&1 | tee /tmp/test.log || {
-            echo "=== FAILED TESTS ==="
-            grep -E "^--- FAIL|^FAIL|panic:" /tmp/test.log | head -50
-            echo "=== PANIC/ERROR DETAIL ==="
-            grep -B2 -A10 "panic:\|FAIL	" /tmp/test.log | head -100
+            echo "::error::Tests failed. Failing tests:"
+            grep -E "^--- FAIL|^FAIL|panic:" /tmp/test.log | while read line; do
+              echo "::error::$line"
+            done
+            grep -A5 "panic:" /tmp/test.log | head -60 | while read line; do
+              echo "::error::$line"
+            done
             exit 1
           }
 
@@ -85,11 +88,15 @@ jobs:
       - name: Check goimports
         run: |
           go install golang.org/x/tools/cmd/goimports@latest
-          OUT=$(goimports -local github.com/Marwanmorsy999/pivot -l             $(find . -name "*.go" -not -path "*/vendor/*" -not -name "model.go") 2>&1)
+          FILES=$(find . -name "*.go" -not -path "*/vendor/*" -not -name "model.go")
+          OUT=$(goimports -local github.com/Marwanmorsy999/pivot -l $FILES 2>&1)
           if [ -n "$OUT" ]; then
-            echo "goimports found issues in:"
-            echo "$OUT"
-            goimports -local github.com/Marwanmorsy999/pivot -d               $(find . -name "*.go" -not -path "*/vendor/*" -not -name "model.go")
+            echo "::error::goimports found import ordering issues in these files:"
+            echo "$OUT" | while read f; do echo "::error::$f"; done
+            echo "--- diffs ---"
+            goimports -local github.com/Marwanmorsy999/pivot -d $FILES 2>&1 | while read line; do
+              echo "::error::$line"
+            done
             exit 1
           fi
           echo "All imports clean"
