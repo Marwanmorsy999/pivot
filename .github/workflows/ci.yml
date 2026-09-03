@@ -42,7 +42,7 @@ jobs:
         run: CGO_ENABLED=1 go build -v ./... 2>&1
 
       - name: Run tests with race detector
-        run: CGO_ENABLED=1 go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+        run: CGO_ENABLED=1 go test -v -race -coverprofile=coverage.out -covermode=atomic ./... 2>&1 | tee /tmp/test-output.txt; echo 'Exit:' $?
 
       - name: Print coverage summary
         run: go tool cover -func=coverage.out
@@ -78,7 +78,7 @@ jobs:
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.13.2
-          args: --timeout=5m
+          args: --timeout=5m --verbose
 
   build:
     name: Build
