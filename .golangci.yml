@@ -6,7 +6,6 @@ run:
   modules-download-mode: readonly
 
 linters:
-  default: none
   enable:
     - errcheck
     - govet
@@ -29,29 +28,31 @@ linters:
     nakedret:
       max-func-lines: 30
 
+  exclusions:
+    rules:
+      - path: _test\.go$
+        linters:
+          - errcheck
+          - gosec
+      - path: internal/config/config\.go$
+        text: "G304:"
+        linters:
+          - gosec
+      - path: internal/core/executor\.go$
+        text: "G204:"
+        linters:
+          - gosec
+      - path: internal/worktree/worktree\.go$
+        text: "G204:"
+        linters:
+          - gosec
+
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
-  exclude-rules:
-    - path: _test\.go$
-      linters:
-        - errcheck
-        - gosec
-    - path: internal/config/config\.go$
-      text: "G304:"
-      linters:
-        - gosec
-    - path: internal/core/executor\.go$
-      text: "G204:"
-      linters:
-        - gosec
-    - path: internal/worktree/worktree\.go$
-      text: "G204:"
-      linters:
-        - gosec
 
 output:
   formats:
-    - format: colored-line-number
+    text:
       path: stdout
-
+      colors: true
