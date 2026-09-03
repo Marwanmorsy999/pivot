@@ -103,7 +103,7 @@ func TestGraph_WavesNoDeadlock_Diamond(t *testing.T) {
 }
 
 func TestOrchestratorRun_ContextCancellation(t *testing.T) {
-	// A pre-cancelled context must cause Run() to return quickly without hanging.
+	// A pre-canceled context must cause Run() to return quickly without hanging.
 	tasks := makeOrcTasks([]struct {
 		id   string
 		tool string
