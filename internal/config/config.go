@@ -98,7 +98,7 @@ func (r *DetectionResult) detectLocalTools() {
 func (r *DetectionResult) pickBestProvider() {
 	if r.Providers["anthropic"] {
 		r.DetectedProvider = "anthropic"
-		r.DetectedModel = "claude-opus-4-5"
+		r.DetectedModel = "claude-sonnet-4-5" // Sonnet: best cost/capability for automation
 		r.DetectedEndpoint = "https://api.anthropic.com/v1/messages"
 		return
 	}
@@ -200,7 +200,10 @@ func saveConfig(cfg *Config) error {
 	if err := os.MkdirAll(filepath.Dir(cfgFile), 0700); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
-	data, err := yaml.Marshal(cfg)
+	// Never write API keys to disk — they must live in env vars.
+	safe := *cfg
+	safe.Planner.APIKey = ""
+	data, err := yaml.Marshal(safe)
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
