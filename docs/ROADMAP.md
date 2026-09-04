@@ -1,79 +1,50 @@
 # Roadmap
 
-This document outlines the planned features and improvements for PIVOT.
+## Current: v3.2 (released)
 
-## Current Release: v2.1.0
+- [x] Parallel DAG execution (wave scheduler, semaphore, sync.WaitGroup)
+- [x] Named output piping ($OUTPUT[task-id], legacy $OUTPUT)
+- [x] Per-task timeout + exponential backoff retry
+- [x] Pre-execution validation (types, tool allowlist, dep graph)
+- [x] --dry-run flag
+- [x] Deterministic resume (persisted task plan JSON)
+- [x] Model-aware cost table (Anthropic, OpenAI, Groq, Gemini, Ollama)
+- [x] SQLite session + journal with indices
+- [x] 40+ tool allowlist
+- [x] Bubble Tea TUI (pointer receivers, viewport, alt-screen)
+- [x] Workflow files (pivot run --file plan.yaml)
+- [x] checkpoint task type (tea.Suspend/ResumeMsg — TUI owns stdin)
+- [x] Per-task hooks (before:/after: shell strings)
+- [x] pivot export — Markdown session reports
+- [x] pivot scaffold — generate example workflow YAML
+- [x] GitHub integration (--issue N, GetIssue, CreateComment, ListIssues)
+- [x] API key never persisted to disk
+- [x] Session status tracking (active/completed/failed)
+- [x] Deduplication in journal export (latest attempt per task)
+- [x] Auto-detect prefers claude-sonnet-4-5 over Opus
+- [x] Correct model pricing (Opus $15/$75, Gemini 2.5, o1, more Ollama)
+- [x] 60+ tests across 10 files
 
-- [x] Professional repository structure
-- [x] Comprehensive unit tests
-- [x] CI/CD with GitHub Actions
-- [x] Linting with golangci-lint
-- [x] Security policy and vulnerability reporting
-- [x] Contribution guidelines
-- [x] Code of conduct
-- [x] Project branding (logo, banner)
+## Next: v3.3
 
-## Upcoming: v2.2.0
+- [ ] **--close-on-success** — comment + close GitHub issue when session completes
+- [ ] **pivot watch --label pivot** — poll for labelled issues and auto-dispatch
+- [ ] **Linux arm64 release binary** — cross-compile in CI
+- [ ] **pivot delete <session-id>** — remove session + journal from state
+- [ ] **pivot status --failed** — filter to failed sessions only
 
-### Features
-- [ ] **Parallel Execution**: Execute independent tasks concurrently
-- [ ] **Task Validation**: Validate LLM-generated tasks before execution
-- [ ] **Retry Logic**: Automatic retry for failed tasks with exponential backoff
-- [ ] **Plugin System**: Support for custom task types via plugins
-- [ ] **Web Dashboard**: Browser-based UI for session monitoring
+## v3.4
 
-### Improvements
-- [ ] **Better Token Counting**: Use tiktoken for accurate token estimation
-- [ ] **Model-Specific Costs**: Different cost rates per provider/model
-- [ ] **Session Export**: Export sessions as JSON/Markdown reports
-- [ ] **Interactive Mode**: Step-through execution with user confirmation
-- [ ] **Task Templates**: Reusable task graph templates
+- [ ] **Smart caching** — skip tasks whose inputs + tool haven't changed
+- [ ] **Cost budget flag** — --max-cost 0.50 aborts if projected cost exceeds limit
+- [ ] **JSON output mode** — --json for scripting pivot status/export
+- [ ] **Env var interpolation** — ${ENV_VAR} expansion in task args
+- [ ] **Parallel limit per tool** — max-parallel per tool type (e.g. max 2 claude-code)
 
-### Infrastructure
-- [ ] **Release Automation**: Automated releases via GitHub Actions
-- [ ] **Homebrew Formula**: Easy installation on macOS/Linux
-- [ ] **Signed Binaries**: Code signing for released binaries
-- [ ] **SBOM Generation**: Software Bill of Materials for releases
+## Future
 
-## Future: v3.0.0
-
-### Major Features
-- [ ] **Multi-Agent Coordination**: Multiple AI agents collaborating on tasks
-- [ ] **Remote Execution**: Execute tasks on remote machines via SSH
-- [ ] **Workflow Sharing**: Share and import workflow definitions
-- [ ] **API Server**: REST API for programmatic access
-- [ ] **Team Features**: Shared sessions and collaboration tools
-
-### Research
-- [ ] **Smart Caching**: Cache LLM responses for similar goals
-- [ ] **Cost Optimization**: Automatically select cheapest provider for task
-- [ ] **Self-Healing**: Automatically fix common task failures
-- [ ] **Natural Language Queries**: Query session history in plain English
-
-## How to Contribute
-
-We welcome contributions! See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines.
-
-To pick up a task from this roadmap:
-1. Open an issue referencing the roadmap item
-2. Discuss approach with maintainers
-3. Submit a pull request
-
-## Completed Milestones
-
-### v2.0.0 (2025-08-31)
-- Initial release
-- Hybrid CLI orchestration
-- Real-time TUI
-- Worktree isolation
-- Cost tracking
-- Session management
-- Multi-provider support
-- Dependency graph execution
-
-### v2.1.0 (2025-09-01)
-- Professional repository structure
-- Unit tests with coverage
-- CI/CD pipeline
-- Security and contribution policies
-- Project branding
+- [ ] **Remote execution** — run tasks via SSH on remote machines
+- [ ] **API server** — REST API for programmatic session control
+- [ ] **Multi-agent coordination** — agent tasks that spawn sub-plans
+- [ ] **Natural language session query** — "what failed last time I deployed?"
+- [ ] **Homebrew formula** — easy macOS/Linux install
