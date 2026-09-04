@@ -164,9 +164,21 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			continue
 		}
 
-		// Run all tasks in this wave concurrently.
-		var wg sync.WaitGroup
+			// Checkpoints must run serially — they block on stdin and must not
+		// be launched concurrently with each other or with tool tasks.
+		// Split the runnable list: tools run concurrently, then each checkpoint runs alone.
+		var toolIDs, checkpointIDs []string
 		for _, id := range runnable {
+			if graph.GetTask(id).Type == planner.TypeCheckpoint {
+				checkpointIDs = append(checkpointIDs, id)
+			} else {
+				toolIDs = append(toolIDs, id)
+			}
+		}
+
+		// Run parallel tool tasks first.
+		var wg sync.WaitGroup
+		for _, id := range toolIDs {
 			wg.Add(1)
 			go func(taskID string) {
 				defer wg.Done()
@@ -186,6 +198,22 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			}(id)
 		}
 		wg.Wait()
+
+		// Then run each checkpoint serially (no goroutine, no semaphore).
+		for _, id := range checkpointIDs {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+			task := graph.GetTask(id)
+			if execErr := executor.Execute(ctx, task, o.eventCh); execErr != nil {
+				firstErr.CompareAndSwap(nil, execErr)
+				taskMapMu.Lock()
+				taskMap[id].Status = "failed"
+				taskMapMu.Unlock()
+			}
+		}
 	}
 
 	o.eventCh <- Event{
