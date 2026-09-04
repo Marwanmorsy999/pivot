@@ -180,3 +180,30 @@ func (s *State) Log(entry JournalEntry) error {
 	)
 	return err
 }
+
+// GetJournalEntries returns all journal entries for a session, ordered by id.
+func (s *State) GetJournalEntries(sessionID string) ([]JournalEntry, error) {
+	rows, err := s.db.Query(
+		`SELECT task_id, tool, args_json, output, error, status, cost, tokens
+		 FROM journal WHERE session_id = ? ORDER BY id ASC`,
+		sessionID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var entries []JournalEntry
+	for rows.Next() {
+		var e JournalEntry
+		var argsJSON string
+		if err := rows.Scan(&e.TaskID, &e.Tool, &argsJSON, &e.Output, &e.Error, &e.Status, &e.Cost, &e.Tokens); err != nil {
+			return nil, fmt.Errorf("scan journal entry: %w", err)
+		}
+		if err := json.Unmarshal([]byte(argsJSON), &e.Args); err != nil {
+			e.Args = nil
+		}
+		e.SessionID = sessionID
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
+}
