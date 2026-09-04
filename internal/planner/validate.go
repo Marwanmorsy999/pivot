@@ -34,8 +34,9 @@ var validTools = map[string]bool{
 
 // validTypes is the set of permitted task type values.
 var validTypes = map[TaskType]bool{
-	TypeTool:  true,
-	TypeAgent: true,
+	TypeTool:       true,
+	TypeAgent:      true,
+	TypeCheckpoint: true,
 }
 
 // Validate checks a task plan for structural correctness before execution.
@@ -57,7 +58,12 @@ func Validate(tasks []Task) error {
 		seen[t.ID] = true
 
 		if !validTypes[t.Type] {
-			return fmt.Errorf("task %q: invalid type %q (must be 'tool' or 'agent')", t.ID, t.Type)
+			return fmt.Errorf("task %q: invalid type %q (must be \'tool\', \'agent\', or \'checkpoint\')", t.ID, t.Type)
+		}
+
+		// Checkpoint tasks need no tool.
+		if t.Type == TypeCheckpoint {
+			continue
 		}
 
 		if t.Tool == "" {
