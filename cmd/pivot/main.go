@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
 	"github.com/Marwanmorsy999/pivot/internal/config"
 	"github.com/Marwanmorsy999/pivot/internal/core"
+	"github.com/Marwanmorsy999/pivot/internal/export"
 	"github.com/Marwanmorsy999/pivot/internal/planner"
 	"github.com/Marwanmorsy999/pivot/internal/state"
 	"github.com/Marwanmorsy999/pivot/internal/tui"
@@ -58,6 +61,27 @@ func newSignalCtx() (context.Context, context.CancelFunc) {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() { <-sigCh; cancel() }()
 	return ctx, cancel
+}
+
+func runOrchestrator(ctx context.Context, tasks []planner.Task, sessionID string, s *state.State, maxParallel int, cfg *config.Config) error {
+	opts := core.OrchestratorOptions{MaxParallel: maxParallel, Provider: cfg.Planner.Provider, Model: cfg.Planner.Model}
+	eventCh := make(chan core.Event, 100)
+	var orchErr error
+	go func() {
+		orchestrator := core.NewOrchestrator(tasks, sessionID, s, eventCh, opts)
+		orchErr = orchestrator.Run(ctx)
+		if orchErr != nil && orchErr != context.Canceled {
+			eventCh <- core.Event{Type: core.EventError, Message: orchErr.Error()}
+		}
+		close(eventCh)
+	}()
+
+	goal, _ := s.GetGoal(sessionID)
+	tuiModel := tui.NewModel(sessionID, goal, tasks, eventCh)
+	if err := tuiModel.Run(); err != nil {
+		return fmt.Errorf("TUI error: %w", err)
+	}
+	return orchErr
 }
 
 func main() {
@@ -111,20 +135,19 @@ func main() {
 			)
 			fmt.Println("✅ Initialized ~/.pivot/config.yaml (auto-detected)")
 			fmt.Println("✅ Initialized ~/.pivot/state.db")
-			fmt.Println("🔧 Run 'pivot run \"your goal\"' to start orchestrating.")
+			fmt.Println("🔧 Run \'pivot run \"your goal\"\' to start orchestrating.")
 		},
 	}
 
 	var dryRun bool
 	var maxParallel int
+	var workflowFile string
 
 	runCmd := &cobra.Command{
 		Use:   "run [goal]",
 		Short: "Execute a goal with hybrid orchestration (AI + CLI tools)",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			goal := args[0]
-
 			ctx, cancel := newSignalCtx()
 			defer cancel()
 
@@ -133,8 +156,76 @@ func main() {
 				fmt.Printf("❌ Failed to load config: %v\n", err)
 				return
 			}
-			if cfg.Planner.Provider == "" || (cfg.Planner.Provider == "ollama" && cfg.Planner.Endpoint == "") {
-				fmt.Println("❌ No AI provider configured. Run 'pivot detect' then 'pivot init', or set an API key env var.")
+
+			var goal string
+			var tasks []planner.Task
+
+			if workflowFile != "" {
+				// Load from YAML file — no LLM needed.
+				fileGoal, fileTasks, err := planner.LoadWorkflowFile(workflowFile)
+				if err != nil {
+					fmt.Printf("❌ Failed to load workflow file: %v\n", err)
+					return
+				}
+				goal = fileGoal
+				if len(args) > 0 {
+					goal = args[0] // CLI arg overrides file goal
+				}
+				if goal == "" {
+					goal = filepath.Base(workflowFile)
+				}
+				tasks = fileTasks
+			} else {
+				// AI planning path.
+				if len(args) == 0 {
+					fmt.Println("❌ Provide a goal or use --file to load a workflow.")
+					return
+				}
+				goal = args[0]
+
+				if cfg.Planner.Provider == "" || (cfg.Planner.Provider == "ollama" && cfg.Planner.Endpoint == "") {
+					fmt.Println("❌ No AI provider configured. Run \'pivot detect\' then \'pivot init\', or set an API key env var.")
+					return
+				}
+
+				p := buildPlanner(cfg)
+				fmt.Println("🧠 Planning...")
+				tasks, err = p.Plan(goal)
+				if err != nil {
+					fmt.Printf("❌ Planning failed: %v\n", err)
+					return
+				}
+				if len(tasks) == 0 {
+					fmt.Println("❌ No tasks generated.")
+					return
+				}
+			}
+
+			if err := planner.Validate(tasks); err != nil {
+				fmt.Printf("❌ Invalid task plan: %v\n", err)
+				return
+			}
+
+			if dryRun {
+				fmt.Println("\n📋 Dry run — task plan (not executing):")
+				for i, t := range tasks {
+					icon := "🔧"
+					if t.Type == planner.TypeAgent {
+						icon = "🤖"
+					} else if t.Type == planner.TypeCheckpoint {
+						icon = "⏸ "
+					}
+					fmt.Printf("  %d. %s [%s] %s: %s\n", i+1, icon, t.Type, t.Tool, t.Description)
+					if len(t.DependsOn) > 0 {
+						fmt.Printf("     depends_on: %v\n", t.DependsOn)
+					}
+					if t.Before != "" {
+						fmt.Printf("     before: %s\n", t.Before)
+					}
+					if t.After != "" {
+						fmt.Printf("     after: %s\n", t.After)
+					}
+				}
 				return
 			}
 
@@ -156,63 +247,20 @@ func main() {
 			}
 			fmt.Printf("📝 Session: %s\n", sessionID)
 
-			p := buildPlanner(cfg)
-
-			fmt.Println("🧠 Planning...")
-			tasks, err := p.Plan(goal)
-			if err != nil {
-				fmt.Printf("❌ Planning failed: %v\n", err)
-				return
-			}
-			if len(tasks) == 0 {
-				fmt.Println("❌ No tasks generated.")
-				return
-			}
-
-			// Validate tasks before execution.
-			if err := planner.Validate(tasks); err != nil {
-				fmt.Printf("❌ Invalid task plan: %v\n", err)
-				return
-			}
-
-			// Dry run: show plan without executing.
-			if dryRun {
-				fmt.Println("\n📋 Dry run — task plan (not executing):")
-				for i, t := range tasks {
-					fmt.Printf("  %d. [%s] %s: %s\n", i+1, t.Type, t.Tool, t.Description)
-					if len(t.DependsOn) > 0 {
-						fmt.Printf("     depends_on: %v\n", t.DependsOn)
-					}
-				}
-				return
-			}
-
-			// Persist the task plan for deterministic resume.
 			if tasksJSON, err := json.Marshal(tasks); err == nil {
 				if err := s.SaveSessionTasks(sessionID, tasksJSON); err != nil {
 					fmt.Fprintf(os.Stderr, "warning: failed to persist task plan: %v\n", err)
 				}
 			}
 
-			opts := core.OrchestratorOptions{MaxParallel: maxParallel, Provider: cfg.Planner.Provider, Model: cfg.Planner.Model}
-			eventCh := make(chan core.Event, 100)
-			go func() {
-				orchestrator := core.NewOrchestrator(tasks, sessionID, s, eventCh, opts)
-				err := orchestrator.Run(ctx)
-				if err != nil && err != context.Canceled {
-					eventCh <- core.Event{Type: core.EventError, Message: err.Error()}
-				}
-				close(eventCh)
-			}()
-
-			tuiModel := tui.NewModel(sessionID, goal, tasks, eventCh)
-			if err := tuiModel.Run(); err != nil {
-				fmt.Printf("❌ TUI error: %v\n", err)
+			if err := runOrchestrator(ctx, tasks, sessionID, s, maxParallel, cfg); err != nil && err != context.Canceled {
+				fmt.Printf("❌ Execution error: %v\n", err)
 			}
 		},
 	}
 	runCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show the task plan without executing")
 	runCmd.Flags().IntVar(&maxParallel, "parallel", 4, "Max tasks to run in parallel (0 = unlimited)")
+	runCmd.Flags().StringVarP(&workflowFile, "file", "f", "", "Load task graph from a YAML workflow file (skips AI planning)")
 
 	resumeCmd := &cobra.Command{
 		Use:   "resume [session-id]",
@@ -249,18 +297,15 @@ func main() {
 				return
 			}
 
-			// Always load config (needed for provider/model and fallback re-plan).
 			cfg, err := config.Load()
 			if err != nil {
 				fmt.Printf("❌ Failed to load config: %v\n", err)
 				return
 			}
 
-			// Load persisted task plan — avoids non-deterministic re-planning.
 			var tasks []planner.Task
 			savedJSON, err := s.GetSessionTasks(sessionID)
 			if err != nil || len(savedJSON) == 0 {
-				// Fallback: re-plan (old sessions without saved plan).
 				fmt.Println("⚠️  No persisted plan found, re-planning...")
 				p := buildPlanner(cfg)
 				tasks, err = p.Plan(goal)
@@ -278,24 +323,127 @@ func main() {
 			ctx, cancel := newSignalCtx()
 			defer cancel()
 
-			opts := core.OrchestratorOptions{MaxParallel: maxParallel, Provider: cfg.Planner.Provider, Model: cfg.Planner.Model}
-			eventCh := make(chan core.Event, 100)
-			go func() {
-				orchestrator := core.NewOrchestrator(tasks, sessionID, s, eventCh, opts)
-				err := orchestrator.Run(ctx)
-				if err != nil && err != context.Canceled {
-					eventCh <- core.Event{Type: core.EventError, Message: err.Error()}
-				}
-				close(eventCh)
-			}()
-
-			tuiModel := tui.NewModel(sessionID, goal, tasks, eventCh)
-			if err := tuiModel.Run(); err != nil {
-				fmt.Printf("❌ TUI error: %v\n", err)
+			if err := runOrchestrator(ctx, tasks, sessionID, s, maxParallel, cfg); err != nil && err != context.Canceled {
+				fmt.Printf("❌ Execution error: %v\n", err)
 			}
 		},
 	}
 	resumeCmd.Flags().IntVar(&maxParallel, "parallel", 4, "Max tasks to run in parallel")
+
+	exportCmd := &cobra.Command{
+		Use:   "export [session-id]",
+		Short: "Export a session as a Markdown report",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			sessionID := args[0]
+			outFile, _ := cmd.Flags().GetString("out")
+
+			s, err := state.New()
+			if err != nil {
+				fmt.Printf("❌ Failed to initialize state: %v\n", err)
+				return
+			}
+			defer func() {
+				if err := s.Close(); err != nil {
+					fmt.Fprintf(os.Stderr, "state close warning: %v\n", err)
+				}
+			}()
+
+			goal, err := s.GetGoal(sessionID)
+			if err != nil {
+				fmt.Printf("❌ Failed to get session goal: %v\n", err)
+				return
+			}
+
+			entries, err := s.GetJournalEntries(sessionID)
+			if err != nil {
+				fmt.Printf("❌ Failed to get journal entries: %v\n", err)
+				return
+			}
+
+			var records []export.TaskRecord
+			var totalCost float64
+			var totalTokens int
+			for _, e := range entries {
+				records = append(records, export.TaskRecord{
+					ID:     e.TaskID,
+					Type:   "tool",
+					Tool:   e.Tool,
+					Status: e.Status,
+					Output: e.Output,
+					Error:  e.Error,
+					Cost:   e.Cost,
+					Tokens: e.Tokens,
+				})
+				totalCost += e.Cost
+				totalTokens += e.Tokens
+			}
+
+			report := export.Report(sessionID, goal, records, totalCost, totalTokens)
+
+			if outFile == "" {
+				fmt.Print(report)
+				return
+			}
+			if err := os.WriteFile(outFile, []byte(report), 0600); err != nil {
+				fmt.Printf("❌ Failed to write report: %v\n", err)
+				return
+			}
+			fmt.Printf("✅ Report saved to %s\n", outFile)
+		},
+	}
+	exportCmd.Flags().StringP("out", "o", "", "Write report to file instead of stdout")
+
+	// pivot workflow scaffold — generates an example workflow YAML
+	scaffoldCmd := &cobra.Command{
+		Use:   "scaffold [name]",
+		Short: "Generate an example workflow YAML file",
+		Args:  cobra.MaximumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			name := "workflow"
+			if len(args) > 0 {
+				name = args[0]
+			}
+			outPath := name + ".yaml"
+
+			example := planner.WorkflowFile{
+				Goal: "Example workflow — edit tasks to suit your needs",
+				Tasks: []planner.Task{
+					{
+						ID: "check-env", Type: planner.TypeTool, Tool: "sh",
+						Args:        []string{"-c", "echo Node $(node --version 2>/dev/null || echo N/A) && echo Go $(go version 2>/dev/null || echo N/A)"},
+						Description: "Check environment",
+					},
+					{
+						ID: "pause", Type: planner.TypeCheckpoint,
+						Description: "Review environment output before continuing",
+						Prompt:      "Environment looks good?",
+						DependsOn:   []string{"check-env"},
+					},
+					{
+						ID: "done", Type: planner.TypeTool, Tool: "echo",
+						Args:        []string{"All done!"},
+						Description: "Final step",
+						DependsOn:   []string{"pause"},
+						Before:      "echo starting final step",
+						After:       "echo finished",
+					},
+				},
+			}
+
+			data, err := yaml.Marshal(example)
+			if err != nil {
+				fmt.Printf("❌ Failed to generate scaffold: %v\n", err)
+				return
+			}
+			if err := os.WriteFile(outPath, data, 0600); err != nil {
+				fmt.Printf("❌ Failed to write file: %v\n", err)
+				return
+			}
+			fmt.Printf("✅ Scaffold written to %s\n", outPath)
+			fmt.Printf("   Edit it and run: pivot run --file %s\n", outPath)
+		},
+	}
 
 	detectCmd := &cobra.Command{
 		Use:   "detect",
@@ -333,7 +481,7 @@ func main() {
 					fmt.Println("🔑 API Key: configured")
 				}
 			}
-			fmt.Println("\n💡 Run 'pivot init' to apply auto-config.")
+			fmt.Println("\n💡 Run \'pivot init\' to apply auto-config.")
 		},
 	}
 
@@ -373,7 +521,7 @@ func main() {
 		},
 	}
 
-	rootCmd.AddCommand(initCmd, runCmd, resumeCmd, statusCmd, detectCmd)
+	rootCmd.AddCommand(initCmd, runCmd, resumeCmd, statusCmd, detectCmd, exportCmd, scaffoldCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
