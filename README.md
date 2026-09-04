@@ -8,155 +8,208 @@
 
 ## What Is Pivot?
 
-Pivot lets you describe a goal in plain English. It calls an LLM to design a
-dependency graph of tasks (CLI tools + AI agents), validates the plan, then
-executes it **in parallel** — showing live status in a Bubble Tea TUI.
+Pivot turns a plain-English goal (or a GitHub issue) into a validated dependency
+graph of CLI tools and AI agents, then executes it in parallel — with live TUI,
+cost tracking, checkpoints, hooks, and full SQLite session history.
 
 ```
-pivot run "find all TODO comments in this repo, summarise them with Claude, and save to todos.md"
+pivot run "find all TODO comments, summarise with Claude, save to todos.md"
 ```
 
-Pivot then:
-1. **Plans** — asks your LLM to design the task graph
-2. **Validates** — checks types, tools, dependencies before touching anything
-3. **Executes** — runs independent tasks concurrently (wave scheduler)
-4. **Tracks** — real cost per task, per-model pricing, full journal in SQLite
-5. **Recovers** — `pivot resume <session>` picks up exactly where it left off
+Pivot:
+1. **Plans** — LLM designs the task graph (or load from a YAML file)
+2. **Validates** — checks types, tools, deps before touching anything
+3. **Executes** — parallel wave scheduler; independent tasks run concurrently
+4. **Tracks** — per-task cost, per-model pricing, full journal in SQLite
+5. **Recovers** — `pivot resume <session>` replays only the failed tasks
+
+## Install
+
+```bash
+# Requires Go 1.22+ and gcc (for SQLite)
+git clone https://github.com/Marwanmorsy999/pivot
+cd pivot
+make install          # installs to $GOPATH/bin
+
+# Or run directly
+export ANTHROPIC_API_KEY=sk-ant-...
+make build && ./pivot init
+```
+
+Pre-built binaries (Linux amd64, macOS amd64/arm64, Windows) are attached to
+each [GitHub Release](https://github.com/Marwanmorsy999/pivot/releases).
 
 ## Quick Start
 
 ```bash
-# Prerequisites: Go 1.22+, gcc (for SQLite)
-git clone https://github.com/Marwanmorsy999/pivot
-cd pivot
+# 1. Detect providers and initialise
+pivot detect
+pivot init
 
-# Set your API key
-export ANTHROPIC_API_KEY=sk-ant-...   # or OPENAI_API_KEY, GROQ_API_KEY
+# 2. Run a goal (LLM plans it)
+pivot run "list all Go files and count lines of code"
 
-# Auto-detect providers and initialise
-CGO_ENABLED=1 go run ./cmd/pivot detect
-CGO_ENABLED=1 go run ./cmd/pivot init
+# 3. Load a workflow file instead (no LLM needed)
+pivot scaffold my-deploy     # generates my-deploy.yaml
+pivot run --file my-deploy.yaml
 
-# Run a goal
-CGO_ENABLED=1 go run ./cmd/pivot run "list all Go files and count lines of code"
+# 4. Fetch goal from a GitHub issue
+pivot run --issue 42         # reads GITHUB_TOKEN from env
 
-# Preview without executing
-CGO_ENABLED=1 go run ./cmd/pivot run --dry-run "deploy my app to k8s"
+# 5. Preview without executing
+pivot run --dry-run "deploy my app to k8s"
 
-# Run with more parallelism
-CGO_ENABLED=1 go run ./cmd/pivot run --parallel 8 "analyse all log files"
+# 6. Export session report
+pivot export sess_1234567890_abcd --out report.md
 ```
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `pivot detect` | Auto-detect all AI providers and local tools |
-| `pivot init` | Initialise config + state DB from detected setup |
-| `pivot run "goal"` | Execute a goal (AI plans → validates → runs) |
-| `pivot run --dry-run "goal"` | Show task plan without executing |
+| `pivot detect` | Auto-detect AI providers and local tools |
+| `pivot init` | Initialise config + state DB |
+| `pivot run "goal"` | Plan and execute a goal |
+| `pivot run --file plan.yaml` | Load task graph from YAML (no LLM) |
+| `pivot run --issue N` | Fetch goal from GitHub issue #N |
+| `pivot run --dry-run` | Show task plan without executing |
 | `pivot run --parallel N` | Max concurrent tasks (default 4) |
-| `pivot resume <session-id>` | Resume failed session from saved plan |
-| `pivot status` | List recent sessions |
+| `pivot resume <id>` | Resume failed session from saved plan |
+| `pivot status` | List recent sessions with status icons |
+| `pivot export <id>` | Export session as Markdown report |
+| `pivot export <id> --out file.md` | Write report to file |
+| `pivot scaffold [name]` | Generate example workflow YAML |
 
-## Supported AI Providers
+## Workflow Files
 
-| Provider | Models | Env Var |
-|----------|--------|---------|
-| Anthropic | claude-opus-4-5, claude-3-5-sonnet | `ANTHROPIC_API_KEY` |
-| OpenAI | gpt-4o, gpt-4o-mini | `OPENAI_API_KEY` |
-| Groq | llama-3.1-8b-instant, llama-3.1-70b | `GROQ_API_KEY` |
-| Gemini | gemini-1.5-flash, gemini-2.0-flash | `GEMINI_API_KEY` |
-| Ollama | llama3.2:3b (local, free) | _(just run Ollama)_ |
+Skip the LLM entirely and define your task graph in YAML:
 
-## Supported Tools (40+)
+```yaml
+# my-workflow.yaml
+goal: Audit and report on the codebase
+tasks:
+  - id: count-lines
+    type: tool
+    tool: sh
+    args: ["-c", "find . -name '*.go' | xargs wc -l | tail -1"]
+    description: Count total lines of Go code
 
-Pivot validates every tool before running it. The allowlist includes:
+  - id: check-env
+    type: checkpoint
+    prompt: "Line count looks reasonable — continue with analysis?"
+    depends_on: [count-lines]
 
-**Unix core:** `find grep awk sed cat echo wc sort uniq head tail xargs tar zip cut tr tee diff patch ls cp mv rm mkdir chmod touch stat`
-
-**Shell:** `sh bash`
-
-**Network/data:** `jq curl wget ssh rsync`
-
-**Dev:** `git docker kubectl make python3 node go npm npx pip cargo rustc terraform helm`
-
-**Cloud:** `aws gcloud az`
-
-**AI agents:** `ollama claude-code gemini-cli`
-
-## Output Piping
-
-Reference one task's output in another task's args:
-
-```json
-{
-  "tasks": [
-    {"id": "fetch", "type": "tool", "tool": "curl", "args": ["https://api.example.com/data"]},
-    {"id": "parse", "type": "tool", "tool": "jq",   "args": [".[0].name", "$OUTPUT[fetch]"], "depends_on": ["fetch"]},
-    {"id": "save",  "type": "tool", "tool": "tee",  "args": ["output.txt"],                  "depends_on": ["parse"],
-     "args": ["$OUTPUT[parse]"]}
-  ]
-}
+  - id: analyse
+    type: agent
+    tool: claude-code
+    args: ["summarise the architecture based on $OUTPUT[count-lines]"]
+    depends_on: [check-env]
+    before: "echo starting analysis"
+    after: "echo done"
 ```
-
-Use `$OUTPUT[task-id]` for named references (multiple deps supported).
-The legacy bare `$OUTPUT` still works and maps to `DependsOn[0]`.
-
-## Task Options
-
-```json
-{
-  "id": "slow-analysis",
-  "type": "agent",
-  "tool": "claude-code",
-  "args": ["analyse this codebase"],
-  "timeout_sec": 600,
-  "retries": 2
-}
-```
-
-- `timeout_sec` — per-task deadline (default 300s)
-- `retries` — retry on failure with exponential backoff (1s → 2s → 4s)
-
-## Resume
-
-Every run persists its task plan. If tasks fail, resume with the exact same plan:
 
 ```bash
-pivot status                          # find your session ID
-pivot resume sess_1234567890123456    # re-run only failed tasks
+pivot run --file my-workflow.yaml
 ```
+
+### Task Types
+
+| Type | Description |
+|------|-------------|
+| `tool` | Runs a validated CLI binary deterministically |
+| `agent` | Runs an AI agent (claude-code, ollama, gemini-cli) |
+| `checkpoint` | Pauses and waits for human y/n confirmation |
+
+### Task Fields
+
+```yaml
+- id: my-task          # required, unique slug
+  type: tool           # tool | agent | checkpoint
+  tool: sh             # executable (tool/agent only)
+  args: ["-c", "..."]  # argument array
+  depends_on: [other]  # task IDs this depends on
+  description: "..."   # shown in TUI and reports
+  timeout_sec: 300     # per-task deadline (default 300)
+  retries: 2           # retry on failure with exponential backoff
+  before: "echo start" # shell hook before execution
+  after: "echo done"   # shell hook after success
+  prompt: "Deploy?"    # message for checkpoint tasks
+```
+
+### Output Piping
+
+```yaml
+args: ["$OUTPUT[fetch]"]    # named: use output of task "fetch"
+args: ["$OUTPUT"]           # legacy: use output of DependsOn[0]
+```
+
+## GitHub Integration
+
+```bash
+# Run goal from a GitHub issue
+export GITHUB_TOKEN=ghp_...
+pivot run --issue 42
+
+# Specify repo explicitly (auto-detected from .git/config)
+pivot run --issue 42 --github-repo owner/repo
+```
+
+## Supported Providers
+
+| Provider | Auto-detected from | Default model |
+|----------|--------------------|---------------|
+| Anthropic | `ANTHROPIC_API_KEY` | claude-sonnet-4-5 |
+| OpenAI | `OPENAI_API_KEY` | gpt-4o-mini |
+| Groq | `GROQ_API_KEY` | llama-3.1-8b-instant |
+| Gemini | `GEMINI_API_KEY` | gemini-1.5-flash |
+| Ollama | running on :11434 | llama3.2:3b (free) |
+
+API keys are **never written to disk** — always read from environment variables.
 
 ## Cost Tracking
 
-Pivot tracks real cost per task using per-model rates:
+Per-task cost shown live in the TUI, stored in SQLite, included in exports.
 
 | Model | Input | Output |
 |-------|-------|--------|
-| claude-opus-4-5 | $3/M | $15/M |
+| claude-opus-4-5 | $15/M | $75/M |
+| claude-sonnet-4-5 | $3/M | $15/M |
+| gpt-4o | $2.50/M | $10/M |
 | gpt-4o-mini | $0.15/M | $0.60/M |
-| gemini-1.5-flash | $0.075/M | $0.30/M |
+| gemini-2.5-flash | $0.075/M | $0.30/M |
 | groq llama-3.1-8b | $0.05/M | $0.08/M |
 | ollama (local) | $0 | $0 |
 
-## Architecture
+## Tool Allowlist (40+)
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full data flow diagram
-and package descriptions.
+Every tool is validated before execution. Allowed executables:
+
+**Unix:** `find grep awk sed cat echo wc sort uniq head tail xargs tar zip cut tr tee diff patch ls cp mv rm mkdir chmod touch stat env which date sleep`  
+**Shell:** `sh bash`  
+**Network/data:** `jq curl wget ssh rsync`  
+**Dev:** `git docker kubectl make python3 node go npm npx pip cargo rustc terraform helm`  
+**Cloud:** `aws gcloud az`  
+**AI agents:** `ollama claude-code gemini-cli`
+
+## Session Management
+
+```bash
+pivot status              # list recent sessions with ✅/❌/▶ icons
+pivot resume sess_abc123  # re-run only failed tasks
+pivot export sess_abc123  # Markdown report: summary table + outputs + cost
+```
 
 ## Configuration
 
-`~/.pivot/config.yaml` (created by `pivot init`):
+`~/.pivot/config.yaml` (created by `pivot init`, API keys never stored here):
 
 ```yaml
 planner:
   provider: anthropic
-  model: claude-opus-4-5
-  api_key: ""          # leave empty — use ANTHROPIC_API_KEY env var instead
-  endpoint: ""         # leave empty for default
+  model: claude-sonnet-4-5
+  endpoint: ""          # leave empty for default
 worktree:
-  enabled: false       # enable for git-isolated agent execution
+  enabled: false
   base_dir: /tmp/pivot-worktrees
 cost:
   enabled: true
@@ -164,14 +217,25 @@ cost:
 
 Set `PIVOT_HOME` to override the `~/.pivot` directory.
 
-## Windows
+## Architecture
 
-```bat
-run.bat "list all Python files"
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full package map.
+
 ```
-
-Requires GCC (e.g. via [MSYS2](https://www.msys2.org/)) for SQLite.
+cmd/pivot/          CLI entry point (cobra commands)
+internal/
+  planner/          LLM planners + YAML loader + validator
+  core/             Orchestrator, executor, task graph (wave scheduler)
+  state/            SQLite session + journal persistence
+  tui/              Bubble Tea TUI
+  github/           GitHub API client
+  export/           Markdown session reports
+  cost/             Per-model pricing
+  config/           Auto-detection + config file
+  paths/            XDG-style path resolution
+  worktree/         Git worktree isolation for agents
+```
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome — tests required.
+See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome — tests required for new features.
