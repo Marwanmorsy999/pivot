@@ -58,7 +58,7 @@ func Validate(tasks []Task) error {
 		seen[t.ID] = true
 
 		if !validTypes[t.Type] {
-			return fmt.Errorf("task %q: invalid type %q (must be \'tool\', \'agent\', or \'checkpoint\')", t.ID, t.Type)
+			return fmt.Errorf("task %q: invalid type %q (must be 'tool', 'agent', or 'checkpoint')", t.ID, t.Type)
 		}
 
 		// Checkpoint tasks need no tool.
