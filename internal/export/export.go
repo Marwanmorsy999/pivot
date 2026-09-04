@@ -27,11 +27,11 @@ func Report(sessionID, goal string, tasks []TaskRecord, totalCost float64, total
 	var b strings.Builder
 
 	now := time.Now().Format("2006-01-02 15:04:05")
-	b.WriteString(fmt.Sprintf("# Pivot Session Report\n\n"))
-	b.WriteString(fmt.Sprintf("**Session:** `%s`\n", sessionID))
-	b.WriteString(fmt.Sprintf("**Goal:** %s\n", goal))
-	b.WriteString(fmt.Sprintf("**Generated:** %s\n\n", now))
-	b.WriteString(fmt.Sprintf("**Total Cost:** $%.6f | **Total Tokens:** %d\n\n", totalCost, totalTokens))
+	b.WriteString("# Pivot Session Report\n\n")
+	fmt.Fprintf(&b, "**Session:** `%s`\n", sessionID)
+	fmt.Fprintf(&b, "**Goal:** %s\n", goal)
+	fmt.Fprintf(&b, "**Generated:** %s\n\n", now)
+	fmt.Fprintf(&b, "**Total Cost:** $%.6f | **Total Tokens:** %d\n\n", totalCost, totalTokens)
 
 	// Summary table
 	b.WriteString("## Task Summary\n\n")
@@ -51,19 +51,19 @@ func Report(sessionID, goal string, tasks []TaskRecord, totalCost float64, total
 			costStr = fmt.Sprintf("$%.6f", t.Cost)
 		}
 		icon := statusIcon(t.Status)
-		b.WriteString(fmt.Sprintf("| %d | `%s` | %s | `%s` | %s %s | %s | %s |\n",
-			i+1, t.ID, t.Type, t.Tool, icon, t.Status, costStr, dur))
+		fmt.Fprintf(&b, "| %d | `%s` | %s | `%s` | %s %s | %s | %s |\n",
+			i+1, t.ID, t.Type, t.Tool, icon, t.Status, costStr, dur)
 	}
 	b.WriteString("\n")
 
 	// Task details
 	b.WriteString("## Task Details\n\n")
 	for i, t := range tasks {
-		b.WriteString(fmt.Sprintf("### %d. %s (`%s`)\n\n", i+1, t.ID, t.Status))
+		fmt.Fprintf(&b, "### %d. %s (`%s`)\n\n", i+1, t.ID, t.Status)
 		if t.Description != "" {
-			b.WriteString(fmt.Sprintf("**Description:** %s\n\n", t.Description))
+			fmt.Fprintf(&b, "**Description:** %s\n\n", t.Description)
 		}
-		b.WriteString(fmt.Sprintf("**Type:** %s | **Tool:** `%s`\n\n", t.Type, t.Tool))
+		fmt.Fprintf(&b, "**Type:** %s | **Tool:** `%s`\n\n", t.Type, t.Tool)
 		if t.Output != "" {
 			b.WriteString("**Output:**\n\n```\n")
 			out := t.Output
@@ -74,7 +74,7 @@ func Report(sessionID, goal string, tasks []TaskRecord, totalCost float64, total
 			b.WriteString("\n```\n\n")
 		}
 		if t.Error != "" {
-			b.WriteString(fmt.Sprintf("**Error:** `%s`\n\n", t.Error))
+			fmt.Fprintf(&b, "**Error:** `%s`\n\n", t.Error)
 		}
 	}
 
