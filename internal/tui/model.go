@@ -154,7 +154,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.finalMsg == "" {
 			m.finalMsg = "✅ Session complete"
 		}
-		return m, nil
+		return m, tea.Quit
 	case tea.ResumeMsg:
 		// TUI restored after checkpoint suspend.
 		// The actual prompt happens here, synchronously, before the TUI repaints.
@@ -251,14 +251,15 @@ func (m *Model) handleEvent(ev core.Event) (tea.Model, tea.Cmd) {
 			))
 		}
 
+		// Use taskOrder index for O(1) row update — avoids truncation collision.
 		rows := m.table.Rows()
-		for i, row := range rows {
-			if row[0] == truncate(ev.TaskID, 16) {
+		for idx, id := range m.taskOrder {
+			if id == ev.TaskID && idx < len(rows) {
 				costStr := "$0.000000"
 				if task.Cost > 0 {
 					costStr = fmt.Sprintf("$%.6f", task.Cost)
 				}
-				rows[i] = table.Row{
+				rows[idx] = table.Row{
 					truncate(ev.TaskID, 16), string(task.Type),
 					truncate(task.Tool, 14), truncate(task.Description, 30),
 					ev.Status, costStr,
@@ -277,7 +278,7 @@ func (m *Model) handleEvent(ev core.Event) (tea.Model, tea.Cmd) {
 			"[%s] %s %s", time.Now().Format("15:04:05"),
 			completedStyle.Render("✓"), ev.Message,
 		))
-		return m, nil
+		return m, tea.Quit
 
 	case core.EventError:
 		m.done = true
@@ -286,7 +287,7 @@ func (m *Model) handleEvent(ev core.Event) (tea.Model, tea.Cmd) {
 			"[%s] %s %s", time.Now().Format("15:04:05"),
 			failedStyle.Render("✗"), ev.Message,
 		))
-		return m, nil
+		return m, tea.Quit
 
 	case core.EventCheckpoint:
 		m.events = append(m.events, fmt.Sprintf(
