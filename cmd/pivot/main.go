@@ -695,13 +695,13 @@ func main() {
 					fmt.Fprintf(os.Stderr, "⚠️  ListIssues error: %v\n", err)
 				} else {
 					for _, issue := range issues {
-						if seen[issue.Number] {
+						// Skip issues already being handled (marked in-progress by us).
+						if client.HasLabel(issue, "pivot:in-progress") {
 							continue
 						}
-						seen[issue.Number] = true
 						fmt.Printf("\n🚀 Dispatching issue #%d: %s\n", issue.Number, issue.Title)
 
-						// Mark issue in-progress immediately.
+						// Mark in-progress before planning to prevent double-dispatch.
 						_ = client.AddLabel(issue.Number, "pivot:in-progress")
 
 						goal := gh.IssueGoal(&issue)
