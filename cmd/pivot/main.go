@@ -15,6 +15,7 @@ import (
 	"github.com/Marwanmorsy999/pivot/internal/config"
 	"github.com/Marwanmorsy999/pivot/internal/core"
 	"github.com/Marwanmorsy999/pivot/internal/export"
+	gh "github.com/Marwanmorsy999/pivot/internal/github"
 	"github.com/Marwanmorsy999/pivot/internal/planner"
 	"github.com/Marwanmorsy999/pivot/internal/state"
 	"github.com/Marwanmorsy999/pivot/internal/tui"
@@ -142,6 +143,9 @@ func main() {
 	var dryRun bool
 	var maxParallel int
 	var workflowFile string
+	var issueNumber int
+	var githubToken string
+	var githubRepo string
 
 	runCmd := &cobra.Command{
 		Use:   "run [goal]",
@@ -175,10 +179,35 @@ func main() {
 					goal = filepath.Base(workflowFile)
 				}
 				tasks = fileTasks
+			} else if issueNumber > 0 {
+				// GitHub issue path.
+				client, err := gh.New(githubToken, githubRepo)
+				if err != nil {
+					fmt.Printf("❌ GitHub client error: %v\n", err)
+					return
+				}
+				issue, err := client.GetIssue(issueNumber)
+				if err != nil {
+					fmt.Printf("❌ Failed to fetch issue #%d: %v\n", issueNumber, err)
+					return
+				}
+				goal = gh.IssueGoal(issue)
+				fmt.Printf("📋 Issue #%d: %s\n", issue.Number, issue.Title)
+				fmt.Printf("🧠 Planning for issue...\n")
+				if cfg.Planner.Provider == "" {
+					fmt.Println("❌ No AI provider configured. Run 'pivot init' first.")
+					return
+				}
+				p := buildPlanner(cfg)
+				tasks, err = p.Plan(goal)
+				if err != nil {
+					fmt.Printf("❌ Planning failed: %v\n", err)
+					return
+				}
 			} else {
 				// AI planning path.
 				if len(args) == 0 {
-					fmt.Println("❌ Provide a goal or use --file to load a workflow.")
+					fmt.Println("❌ Provide a goal, use --file to load a workflow, or use --issue N.")
 					return
 				}
 				goal = args[0]
@@ -264,6 +293,9 @@ func main() {
 	runCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show the task plan without executing")
 	runCmd.Flags().IntVar(&maxParallel, "parallel", 4, "Max tasks to run in parallel (0 = unlimited)")
 	runCmd.Flags().StringVarP(&workflowFile, "file", "f", "", "Load task graph from a YAML workflow file (skips AI planning)")
+	runCmd.Flags().IntVar(&issueNumber, "issue", 0, "Fetch goal from a GitHub issue number (requires GITHUB_TOKEN)")
+	runCmd.Flags().StringVar(&githubToken, "github-token", "", "GitHub personal access token (overrides GITHUB_TOKEN env)")
+	runCmd.Flags().StringVar(&githubRepo, "github-repo", "", "GitHub repo as owner/repo (auto-detected from git remote)")
 
 	resumeCmd := &cobra.Command{
 		Use:   "resume [session-id]",
