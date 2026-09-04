@@ -564,6 +564,8 @@ func main() {
 		},
 	}
 
+	statusCmd.Flags().Bool("failed", false, "Show only failed sessions")
+
 	detectCmd := &cobra.Command{
 		Use:   "detect",
 		Short: "Detect all providers and local setup",
