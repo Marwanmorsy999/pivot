@@ -60,21 +60,30 @@ func newSignalCtx() (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(context.Background())
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() { <-sigCh; cancel() }()
+	go func() {
+		select {
+		case <-sigCh:
+			cancel()
+		case <-ctx.Done():
+			// Normal exit: drain signal channel to avoid goroutine leak.
+		}
+		signal.Stop(sigCh)
+	}()
 	return ctx, cancel
 }
 
 func runOrchestrator(ctx context.Context, tasks []planner.Task, sessionID string, s *state.State, maxParallel int, cfg *config.Config) error {
 	opts := core.OrchestratorOptions{MaxParallel: maxParallel, Provider: cfg.Planner.Provider, Model: cfg.Planner.Model}
 	eventCh := make(chan core.Event, 100)
-	var orchErr error
+	orchErrCh := make(chan error, 1) // buffered — goroutine never blocks
 	go func() {
 		orchestrator := core.NewOrchestrator(tasks, sessionID, s, eventCh, opts)
-		orchErr = orchestrator.Run(ctx)
-		if orchErr != nil && orchErr != context.Canceled {
-			eventCh <- core.Event{Type: core.EventError, Message: orchErr.Error()}
+		err := orchestrator.Run(ctx)
+		if err != nil && err != context.Canceled {
+			eventCh <- core.Event{Type: core.EventError, Message: err.Error()}
 		}
 		close(eventCh)
+		orchErrCh <- err
 	}()
 
 	goal, _ := s.GetGoal(sessionID)
@@ -82,7 +91,7 @@ func runOrchestrator(ctx context.Context, tasks []planner.Task, sessionID string
 	if err := tuiModel.Run(); err != nil {
 		return fmt.Errorf("TUI error: %w", err)
 	}
-	return orchErr
+	return <-orchErrCh
 }
 
 func main() {
