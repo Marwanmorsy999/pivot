@@ -622,7 +622,7 @@ func main() {
 
 	watchCmd := &cobra.Command{
 		Use:   "watch",
-		Short: "Poll GitHub for labelled issues and auto-dispatch pivot runs",
+		Short: "Poll GitHub for labeled issues and auto-dispatch pivot runs",
 		Run: func(cmd *cobra.Command, args []string) {
 			label, _ := cmd.Flags().GetString("label")
 			intervalSec, _ := cmd.Flags().GetInt("interval")
@@ -642,7 +642,7 @@ func main() {
 				return
 			}
 
-			fmt.Printf("👁  Watching for issues labelled %q every %ds. Ctrl+C to stop.\n", label, intervalSec)
+			fmt.Printf("👁  Watching for issues labeled %q every %ds. Ctrl+C to stop.\n", label, intervalSec)
 			seen := make(map[int]bool)
 
 			ctx, cancel := newSignalCtx()
