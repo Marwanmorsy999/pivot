@@ -14,10 +14,16 @@ import (
 type EventType string
 
 const (
-	EventTaskUpdate EventType = "task_update"
-	EventComplete   EventType = "complete"
-	EventError      EventType = "error"
+	EventTaskUpdate  EventType = "task_update"
+	EventComplete    EventType = "complete"
+	EventError       EventType = "error"
+	EventCheckpoint  EventType = "checkpoint"
 )
+
+// CheckpointResponse is sent back from the TUI to unblock a checkpoint task.
+type CheckpointResponse struct {
+	Confirmed bool
+}
 
 // Event carries task status updates and completion info to the TUI.
 type Event struct {
@@ -29,6 +35,10 @@ type Event struct {
 	Message string
 	Cost    float64
 	Tokens  int
+	// Prompt and RespCh are set only for EventCheckpoint events.
+	// The TUI must send a CheckpointResponse on RespCh to unblock the executor.
+	Prompt string
+	RespCh chan CheckpointResponse
 }
 
 // OrchestratorOptions configures runtime behavior.
