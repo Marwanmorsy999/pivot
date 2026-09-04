@@ -226,15 +226,29 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		}
 	}
 
+	finalErr := firstErr.Load()
+
+	status := "completed"
+	if finalErr != nil {
+		status = "failed"
+	}
+	if o.state != nil {
+		_ = o.state.UpdateSessionStatus(o.sessionID, status)
+	}
+
+	msg := fmt.Sprintf("✅ Done — cost $%.6f, tokens %d", executor.Cost, executor.Tokens)
+	if finalErr != nil {
+		msg = fmt.Sprintf("❌ Failed — cost $%.6f, tokens %d", executor.Cost, executor.Tokens)
+	}
 	o.eventCh <- Event{
 		Type:    EventComplete,
 		Cost:    executor.Cost,
 		Tokens:  executor.Tokens,
-		Message: fmt.Sprintf("✅ Done — cost $%.6f, tokens %d", executor.Cost, executor.Tokens),
+		Message: msg,
 	}
 
-	if v := firstErr.Load(); v != nil {
-		return v.(error)
+	if finalErr != nil {
+		return finalErr.(error)
 	}
 	return nil
 }
