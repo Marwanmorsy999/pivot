@@ -202,9 +202,18 @@ type SessionSummary struct {
 }
 
 // GetSessionSummaries returns up to 20 recent sessions with goal and status in one query.
-func (s *State) GetSessionSummaries() ([]SessionSummary, error) {
-	rows, err := s.db.Query(
-		"SELECT id, goal, status FROM sessions ORDER BY created_at DESC LIMIT 20")
+// If statusFilter is non-empty (e.g. "failed"), only matching sessions are returned.
+func (s *State) GetSessionSummaries(statusFilter string) ([]SessionSummary, error) {
+	var rows *sql.Rows
+	var err error
+	if statusFilter != "" {
+		rows, err = s.db.Query(
+			"SELECT id, goal, status FROM sessions WHERE status = ? ORDER BY created_at DESC LIMIT 20",
+			statusFilter)
+	} else {
+		rows, err = s.db.Query(
+			"SELECT id, goal, status FROM sessions ORDER BY created_at DESC LIMIT 20")
+	}
 	if err != nil {
 		return nil, err
 	}
