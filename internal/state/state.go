@@ -184,6 +184,42 @@ func (s *State) IsTaskCompleted(sessionID, taskID string) (bool, error) {
 	return count > 0, err
 }
 
+// DeleteSession removes a session and all its journal entries.
+func (s *State) DeleteSession(sessionID string) error {
+	_, err := s.db.Exec("DELETE FROM journal WHERE session_id = ?", sessionID)
+	if err != nil {
+		return fmt.Errorf("delete journal: %w", err)
+	}
+	_, err = s.db.Exec("DELETE FROM sessions WHERE id = ?", sessionID)
+	return err
+}
+
+// SessionSummary holds the data shown by pivot status.
+type SessionSummary struct {
+	ID     string
+	Goal   string
+	Status string
+}
+
+// GetSessionSummaries returns up to 20 recent sessions with goal and status in one query.
+func (s *State) GetSessionSummaries() ([]SessionSummary, error) {
+	rows, err := s.db.Query(
+		"SELECT id, goal, status FROM sessions ORDER BY created_at DESC LIMIT 20")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []SessionSummary
+	for rows.Next() {
+		var ss SessionSummary
+		if err := rows.Scan(&ss.ID, &ss.Goal, &ss.Status); err != nil {
+			return nil, fmt.Errorf("scan session: %w", err)
+		}
+		out = append(out, ss)
+	}
+	return out, rows.Err()
+}
+
 // Log records a task execution journal entry. Args are stored as JSON.
 func (s *State) Log(entry JournalEntry) error {
 	argsJSON, err := json.Marshal(entry.Args)
