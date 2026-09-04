@@ -405,13 +405,28 @@ func main() {
 				return
 			}
 
+			// Build a type lookup from the persisted task plan.
+			taskTypes := make(map[string]string)
+			if savedJSON, err := s.GetSessionTasks(sessionID); err == nil && len(savedJSON) > 0 {
+				var savedTasks []planner.Task
+				if json.Unmarshal(savedJSON, &savedTasks) == nil {
+					for _, t := range savedTasks {
+						taskTypes[t.ID] = string(t.Type)
+					}
+				}
+			}
+
 			var records []export.TaskRecord
 			var totalCost float64
 			var totalTokens int
 			for _, e := range entries {
+				taskType := taskTypes[e.TaskID]
+				if taskType == "" {
+					taskType = "tool"
+				}
 				records = append(records, export.TaskRecord{
 					ID:     e.TaskID,
-					Type:   "tool",
+					Type:   taskType,
 					Tool:   e.Tool,
 					Status: e.Status,
 					Output: e.Output,
