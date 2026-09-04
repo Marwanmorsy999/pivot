@@ -1,7 +1,6 @@
 package core
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"math"
@@ -136,34 +135,27 @@ func runHook(ctx context.Context, hook string) error {
 	return cmd.Run()
 }
 
-// runCheckpoint pauses execution and prompts the user via stdin.
-// Returns nil if the user confirms, error if they abort.
+// runCheckpoint sends an EventCheckpoint to the TUI and blocks until
+// the TUI responds via RespCh. The TUI owns stdin; we never read it directly.
 func runCheckpoint(task *Task, eventCh chan Event) error {
 	prompt := task.Prompt
 	if prompt == "" {
 		prompt = fmt.Sprintf("Continue to next task after %q?", task.ID)
 	}
 
+	respCh := make(chan CheckpointResponse, 1)
 	eventCh <- Event{
-		Type:    EventTaskUpdate,
-		TaskID:  task.ID,
-		Status:  "waiting",
-		Message: fmt.Sprintf("⏸  CHECKPOINT — %s (y/n)", prompt),
+		Type:   EventCheckpoint,
+		TaskID: task.ID,
+		Prompt: prompt,
+		RespCh: respCh,
 	}
 
-	fmt.Fprintf(os.Stderr, "\n⏸  CHECKPOINT [%s]\n   %s [y/n]: ", task.ID, prompt)
-	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		answer := strings.TrimSpace(strings.ToLower(scanner.Text()))
-		if answer == "y" || answer == "yes" {
-			return nil
-		}
-		if answer == "n" || answer == "no" {
-			return fmt.Errorf("checkpoint %q aborted by user", task.ID)
-		}
-		fmt.Fprint(os.Stderr, "   Please enter y or n: ")
+	resp := <-respCh
+	if !resp.Confirmed {
+		return fmt.Errorf("checkpoint %q aborted by user", task.ID)
 	}
-	return fmt.Errorf("checkpoint %q: stdin closed", task.ID)
+	return nil
 }
 
 // Execute runs a single task with timeout and retry. Safe for concurrent use.
