@@ -73,6 +73,37 @@ func newSignalCtx() (context.Context, context.CancelFunc) {
 	return ctx, cancel
 }
 
+// runHeadless executes a session without the TUI — for watch/daemon mode.
+func runHeadless(ctx context.Context, tasks []planner.Task, sessionID string, s *state.State, maxParallel int, cfg *config.Config) error {
+	opts := core.OrchestratorOptions{MaxParallel: maxParallel, Provider: cfg.Planner.Provider, Model: cfg.Planner.Model}
+	eventCh := make(chan core.Event, 100)
+	orchErrCh := make(chan error, 1)
+	go func() {
+		orchestrator := core.NewOrchestrator(tasks, sessionID, s, eventCh, opts)
+		err := orchestrator.Run(ctx)
+		close(eventCh)
+		orchErrCh <- err
+	}()
+	shortID := sessionID
+	if len(shortID) > 12 {
+		shortID = shortID[:12]
+	}
+	for ev := range eventCh {
+		switch ev.Type {
+		case core.EventTaskUpdate:
+			fmt.Printf("  [%s] %s → %s\n", shortID, ev.TaskID, ev.Status)
+		case core.EventComplete:
+			fmt.Printf("  [%s] done — %s\n", shortID, ev.Message)
+		case core.EventError:
+			fmt.Fprintf(os.Stderr, "  [%s] error: %s\n", shortID, ev.Message)
+		case core.EventCheckpoint:
+			// Headless: auto-confirm checkpoints (no stdin in daemon mode).
+			ev.RespCh <- core.CheckpointResponse{Confirmed: true}
+		}
+	}
+	return <-orchErrCh
+}
+
 func runOrchestrator(ctx context.Context, tasks []planner.Task, sessionID string, s *state.State, maxParallel int, cfg *config.Config) error {
 	opts := core.OrchestratorOptions{MaxParallel: maxParallel, Provider: cfg.Planner.Provider, Model: cfg.Planner.Model}
 	eventCh := make(chan core.Event, 100)
@@ -597,16 +628,19 @@ func main() {
 				fmt.Println("No sessions found.")
 				return
 			}
+			summaries, err := s.GetSessionSummaries()
+			if err != nil {
+				fmt.Printf("❌ Failed to get sessions: %v\n", err)
+				return
+			}
+			if len(summaries) == 0 {
+				fmt.Println("No sessions found.")
+				return
+			}
 			fmt.Println("📂 Recent Sessions:")
-			for _, id := range sessions {
-				goal, err := s.GetGoal(id)
-				if err != nil {
-					fmt.Printf("  - %s: <failed to load goal: %v>\n", id, err)
-					continue
-				}
-				status, _ := s.GetSessionStatus(id)
+			for _, ss := range summaries {
 				icon := "○"
-				switch status {
+				switch ss.Status {
 				case "completed":
 					icon = "✅"
 				case "failed":
@@ -614,7 +648,7 @@ func main() {
 				case "active":
 					icon = "▶"
 				}
-				fmt.Printf("  %s %s  %s\n", icon, id, goal)
+				fmt.Printf("  %s %s  %s\n", icon, ss.ID, ss.Goal)
 			}
 		},
 	}
@@ -642,8 +676,8 @@ func main() {
 				return
 			}
 
+			// Label pivot:in-progress is the dedup signal — survives restarts.
 			fmt.Printf("👁  Watching for issues labeled %q every %ds. Ctrl+C to stop.\n", label, intervalSec)
-			seen := make(map[int]bool)
 
 			ctx, cancel := newSignalCtx()
 			defer cancel()
@@ -676,25 +710,28 @@ func main() {
 						if planErr != nil {
 							fmt.Fprintf(os.Stderr, "❌ Planning failed for #%d: %v\n", issue.Number, planErr)
 							_ = client.CreateComment(issue.Number, fmt.Sprintf("❌ Pivot planning failed: %v", planErr))
+							_ = client.RemoveLabel(issue.Number, "pivot:in-progress")
 							continue
 						}
 						if err := planner.Validate(tasks); err != nil {
 							fmt.Fprintf(os.Stderr, "❌ Invalid plan for #%d: %v\n", issue.Number, err)
+							_ = client.RemoveLabel(issue.Number, "pivot:in-progress")
 							continue
 						}
 
-						s, stateErr := state.New()
+						st, stateErr := state.New()
 						if stateErr != nil {
 							fmt.Fprintf(os.Stderr, "❌ State error: %v\n", stateErr)
+							_ = client.RemoveLabel(issue.Number, "pivot:in-progress")
 							continue
 						}
-						sessionID, _ := s.CreateSession(goal)
+						sessionID, _ := st.CreateSession(goal)
 						if tasksJSON, err := json.Marshal(tasks); err == nil {
-							_ = s.SaveSessionTasks(sessionID, tasksJSON)
+							_ = st.SaveSessionTasks(sessionID, tasksJSON)
 						}
 
-						orchErr := runOrchestrator(ctx, tasks, sessionID, s, maxPar, cfg)
-						_ = s.Close()
+						orchErr := runHeadless(ctx, tasks, sessionID, st, maxPar, cfg)
+						_ = st.Close()
 
 						if orchErr == nil {
 							comment := fmt.Sprintf(
@@ -706,6 +743,7 @@ func main() {
 							fmt.Printf("✅ Issue #%d done and closed.\n", issue.Number)
 						} else {
 							_ = client.CreateComment(issue.Number, fmt.Sprintf("❌ Pivot failed: %v\nSession: `%s`", orchErr, sessionID))
+							_ = client.RemoveLabel(issue.Number, "pivot:in-progress")
 							fmt.Fprintf(os.Stderr, "❌ Issue #%d failed: %v\n", issue.Number, orchErr)
 						}
 					}
@@ -725,7 +763,25 @@ func main() {
 	watchCmd.Flags().String("github-repo", "", "GitHub repo as owner/repo (auto-detected from git remote)")
 	watchCmd.Flags().Int("parallel", 4, "Max parallel tasks per dispatched run")
 
-	rootCmd.AddCommand(initCmd, runCmd, resumeCmd, statusCmd, detectCmd, exportCmd, scaffoldCmd, watchCmd)
+	deleteCmd := &cobra.Command{
+		Use:   "delete <session-id>",
+		Short: "Delete a session and its journal entries",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			st, err := state.New()
+			if err != nil {
+				fmt.Printf("❌ State error: %v\n", err)
+				return
+			}
+			defer func() { _ = st.Close() }()
+			if err := st.DeleteSession(args[0]); err != nil {
+				fmt.Printf("❌ Failed to delete: %v\n", err)
+				return
+			}
+			fmt.Printf("✅ Deleted session %s\n", args[0])
+		},
+	}
+	rootCmd.AddCommand(initCmd, runCmd, resumeCmd, statusCmd, detectCmd, exportCmd, scaffoldCmd, watchCmd, deleteCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
