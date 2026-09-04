@@ -131,6 +131,13 @@ func (s *State) GetGoal(sessionID string) (string, error) {
 	return goal, err
 }
 
+// GetSessionStatus returns the current status of a session ("active", "completed", "failed").
+func (s *State) GetSessionStatus(sessionID string) (string, error) {
+	var status string
+	err := s.db.QueryRow("SELECT status FROM sessions WHERE id = ?", sessionID).Scan(&status)
+	return status, err
+}
+
 func (s *State) GetSessions() ([]string, error) {
 	rows, err := s.db.Query("SELECT id FROM sessions ORDER BY created_at DESC LIMIT 20")
 	if err != nil {
