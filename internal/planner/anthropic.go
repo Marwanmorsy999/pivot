@@ -48,15 +48,17 @@ RULES:
 - depends_on must only reference IDs defined in the same plan`
 
 func (p *AnthropicPlanner) Plan(goal string) ([]Task, error) {
-	if p.Endpoint == "" {
-		p.Endpoint = "https://api.anthropic.com/v1/messages"
+	endpoint := p.Endpoint
+	if endpoint == "" {
+		endpoint = "https://api.anthropic.com/v1/messages"
 	}
-	if p.Model == "" {
-		p.Model = "claude-opus-4-5"
+	model := p.Model
+	if model == "" {
+		model = "claude-sonnet-4-5"
 	}
 
 	body := map[string]interface{}{
-		"model":      p.Model,
+		"model":      model,
 		"max_tokens": 2048,
 		"system":     systemPrompt,
 		"messages": []map[string]string{
@@ -68,7 +70,7 @@ func (p *AnthropicPlanner) Plan(goal string) ([]Task, error) {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, p.Endpoint, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
