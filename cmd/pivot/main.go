@@ -135,7 +135,7 @@ func main() {
 			)
 			fmt.Println("✅ Initialized ~/.pivot/config.yaml (auto-detected)")
 			fmt.Println("✅ Initialized ~/.pivot/state.db")
-			fmt.Println("🔧 Run \'pivot run \"your goal\"\' to start orchestrating.")
+			fmt.Println("🔧 Run 'pivot run \"your goal\"' to start orchestrating.")
 		},
 	}
 
@@ -184,7 +184,7 @@ func main() {
 				goal = args[0]
 
 				if cfg.Planner.Provider == "" || (cfg.Planner.Provider == "ollama" && cfg.Planner.Endpoint == "") {
-					fmt.Println("❌ No AI provider configured. Run \'pivot detect\' then \'pivot init\', or set an API key env var.")
+					fmt.Println("❌ No AI provider configured. Run 'pivot detect' then 'pivot init', or set an API key env var.")
 					return
 				}
 
@@ -481,7 +481,7 @@ func main() {
 					fmt.Println("🔑 API Key: configured")
 				}
 			}
-			fmt.Println("\n💡 Run \'pivot init\' to apply auto-config.")
+			fmt.Println("\n💡 Run 'pivot init' to apply auto-config.")
 		},
 	}
 
