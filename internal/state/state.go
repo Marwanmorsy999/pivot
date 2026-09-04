@@ -1,6 +1,7 @@
 package state
 
 import (
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -88,10 +89,21 @@ func (s *State) migrate() error {
 func (s *State) Close() error { return s.db.Close() }
 
 // CreateSession creates a new session and returns its ID.
+// IDs combine a timestamp prefix for sortability with 4 random bytes for uniqueness.
 func (s *State) CreateSession(goal string) (string, error) {
-	id := fmt.Sprintf("sess_%d", time.Now().UnixNano())
+	buf := make([]byte, 4)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate session id: %w", err)
+	}
+	id := fmt.Sprintf("sess_%d_%x", time.Now().UnixMilli(), buf)
 	_, err := s.db.Exec("INSERT INTO sessions (id, goal) VALUES (?, ?)", id, goal)
 	return id, err
+}
+
+// UpdateSessionStatus sets the final status of a session (e.g. "completed", "failed").
+func (s *State) UpdateSessionStatus(sessionID, status string) error {
+	_, err := s.db.Exec("UPDATE sessions SET status = ? WHERE id = ?", status, sessionID)
+	return err
 }
 
 // SaveSessionTasks persists the task plan JSON so resume doesn't need to re-plan.
@@ -181,12 +193,16 @@ func (s *State) Log(entry JournalEntry) error {
 	return err
 }
 
-// GetJournalEntries returns all journal entries for a session, ordered by id.
+// GetJournalEntries returns the latest journal entry per task for a session.
+// On retried tasks, only the final attempt is returned.
 func (s *State) GetJournalEntries(sessionID string) ([]JournalEntry, error) {
 	rows, err := s.db.Query(
 		`SELECT task_id, tool, args_json, output, error, status, cost, tokens
-		 FROM journal WHERE session_id = ? ORDER BY id ASC`,
-		sessionID,
+		 FROM journal
+		 WHERE session_id = ?
+		   AND id IN (SELECT MAX(id) FROM journal WHERE session_id = ? GROUP BY task_id)
+		 ORDER BY id ASC`,
+		sessionID, sessionID,
 	)
 	if err != nil {
 		return nil, err
