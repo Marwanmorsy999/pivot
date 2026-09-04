@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -18,28 +19,33 @@ type OpenAPlanner struct {
 }
 
 func (p *OpenAPlanner) Plan(goal string) ([]Task, error) {
-	if p.Endpoint == "" {
-		p.Endpoint = "https://api.openai.com/v1/chat/completions"
+	endpoint := p.Endpoint
+	if endpoint == "" {
+		endpoint = "https://api.openai.com/v1/chat/completions"
 	}
-	if p.Model == "" {
-		p.Model = "gpt-4o-mini"
+	model := p.Model
+	if model == "" {
+		model = "gpt-4o-mini"
 	}
 
 	body := map[string]interface{}{
-		"model": p.Model,
+		"model": model,
 		"messages": []map[string]string{
 			{"role": "system", "content": systemPrompt},
 			{"role": "user", "content": fmt.Sprintf("Goal: %q\n\nReturn the task plan JSON.", goal)},
 		},
-		"response_format": map[string]string{"type": "json_object"},
-		"max_tokens":      2048,
+		"max_tokens": 2048,
+	}
+	// json_object response_format is OpenAI-specific; Gemini's compatible endpoint rejects it.
+	if strings.Contains(endpoint, "openai.com") || strings.Contains(endpoint, "groq.com") {
+		body["response_format"] = map[string]string{"type": "json_object"}
 	}
 	jsonData, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, p.Endpoint, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
