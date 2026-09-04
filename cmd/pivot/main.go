@@ -209,11 +209,14 @@ func main() {
 			if dryRun {
 				fmt.Println("\n📋 Dry run — task plan (not executing):")
 				for i, t := range tasks {
-					icon := "🔧"
-					if t.Type == planner.TypeAgent {
+					var icon string
+					switch t.Type {
+					case planner.TypeAgent:
 						icon = "🤖"
-					} else if t.Type == planner.TypeCheckpoint {
+					case planner.TypeCheckpoint:
 						icon = "⏸ "
+					default:
+						icon = "🔧"
 					}
 					fmt.Printf("  %d. %s [%s] %s: %s\n", i+1, icon, t.Type, t.Tool, t.Description)
 					if len(t.DependsOn) > 0 {
