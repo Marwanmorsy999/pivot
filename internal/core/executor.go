@@ -280,7 +280,7 @@ func (e *Executor) runOnce(ctx context.Context, task *Task, args []string) (stri
 		err    error
 	)
 
-	if task.Worktree && task.Type == "agent" {
+	if task.Worktree && task.Type == planner.TypeAgent {
 		wt, wtErr := worktree.Create()
 		if wtErr != nil {
 			return "", fmt.Errorf("worktree creation failed: %w", wtErr)
