@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"math"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Marwanmorsy999/pivot/internal/cost"
+	"github.com/Marwanmorsy999/pivot/internal/planner"
 	"github.com/Marwanmorsy999/pivot/internal/state"
 	"github.com/Marwanmorsy999/pivot/internal/worktree"
 )
@@ -123,8 +125,65 @@ func (e *Executor) resolveArgs(task *Task) ([]string, error) {
 	return args, nil
 }
 
+// runHook executes a before/after shell hook string. Errors are non-fatal warnings.
+func runHook(ctx context.Context, hook string) error {
+	if hook == "" {
+		return nil
+	}
+	cmd := exec.CommandContext(ctx, "sh", "-c", hook) // #nosec G204 -- hook is user-authored config
+	cmd.Stdout = os.Stderr                             // hooks go to stderr so they don't pollute task output
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// runCheckpoint pauses execution and prompts the user via stdin.
+// Returns nil if the user confirms, error if they abort.
+func runCheckpoint(task *Task, eventCh chan Event) error {
+	prompt := task.Prompt
+	if prompt == "" {
+		prompt = fmt.Sprintf("Continue to next task after %q?", task.ID)
+	}
+
+	eventCh <- Event{
+		Type:    EventTaskUpdate,
+		TaskID:  task.ID,
+		Status:  "waiting",
+		Message: fmt.Sprintf("⏸  CHECKPOINT — %s (y/n)", prompt),
+	}
+
+	fmt.Fprintf(os.Stderr, "\n⏸  CHECKPOINT [%s]\n   %s [y/n]: ", task.ID, prompt)
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		answer := strings.TrimSpace(strings.ToLower(scanner.Text()))
+		if answer == "y" || answer == "yes" {
+			return nil
+		}
+		if answer == "n" || answer == "no" {
+			return fmt.Errorf("checkpoint %q aborted by user", task.ID)
+		}
+		fmt.Fprint(os.Stderr, "   Please enter y or n: ")
+	}
+	return fmt.Errorf("checkpoint %q: stdin closed", task.ID)
+}
+
 // Execute runs a single task with timeout and retry. Safe for concurrent use.
 func (e *Executor) Execute(ctx context.Context, task *Task, eventCh chan Event) error {
+	// Handle checkpoint tasks separately — no tool, no cost.
+	if task.Type == planner.TypeCheckpoint {
+		task.Status = "running"
+		eventCh <- Event{Type: EventTaskUpdate, TaskID: task.ID, Status: "running"}
+		if err := runCheckpoint(task, eventCh); err != nil {
+			task.Status = "failed"
+			task.Error = err.Error()
+			eventCh <- Event{Type: EventTaskUpdate, TaskID: task.ID, Status: "failed", Error: err.Error()}
+			return err
+		}
+		task.Status = "completed"
+		eventCh <- Event{Type: EventTaskUpdate, TaskID: task.ID, Status: "completed", Output: "confirmed"}
+		e.SetOutput(task.ID, "confirmed")
+		return nil
+	}
+
 	args, err := e.resolveArgs(task)
 	if err != nil {
 		task.Status = "failed"
@@ -140,6 +199,11 @@ func (e *Executor) Execute(ctx context.Context, task *Task, eventCh chan Event) 
 	maxRetries := task.Retries
 	if maxRetries < 0 {
 		maxRetries = 0
+	}
+
+	// Run before-hook (non-fatal).
+	if hookErr := runHook(ctx, task.Before); hookErr != nil {
+		fmt.Fprintf(os.Stderr, "before-hook warning for task %s: %v\n", task.ID, hookErr)
 	}
 
 	task.Status = "running"
@@ -191,6 +255,11 @@ func (e *Executor) Execute(ctx context.Context, task *Task, eventCh chan Event) 
 			Status: "failed", Cost: costUSD, Tokens: tokenCount,
 		})
 		return lastErr
+	}
+
+	// Run after-hook (non-fatal).
+	if hookErr := runHook(ctx, task.After); hookErr != nil {
+		fmt.Fprintf(os.Stderr, "after-hook warning for task %s: %v\n", task.ID, hookErr)
 	}
 
 	task.Status = "completed"
