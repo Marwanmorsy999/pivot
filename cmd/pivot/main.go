@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -294,8 +295,35 @@ func main() {
 				}
 			}
 
-			if err := runOrchestrator(ctx, tasks, sessionID, s, maxParallel, cfg); err != nil && err != context.Canceled {
-				fmt.Printf("❌ Execution error: %v\n", err)
+			orchErr := runOrchestrator(ctx, tasks, sessionID, s, maxParallel, cfg)
+			if orchErr != nil && orchErr != context.Canceled {
+				fmt.Printf("❌ Execution error: %v\n", orchErr)
+			}
+
+			// Post-run GitHub issue actions.
+			closeOnSuccess, _ := cmd.Flags().GetBool("close-on-success")
+			if issueNumber > 0 && closeOnSuccess && orchErr == nil {
+				client, ghErr := gh.New(githubToken, githubRepo)
+				if ghErr == nil {
+					entries, _ := s.GetJournalEntries(sessionID)
+					var totalCost float64
+					for _, e := range entries {
+						totalCost += e.Cost
+					}
+					comment := fmt.Sprintf(
+						"✅ **Pivot completed** session `%s`\n\n"+
+							"**Tasks:** %d | **Cost:** $%.6f\n\n"+
+							"Run `pivot export %s` for the full report.",
+						sessionID, len(entries), totalCost, sessionID,
+					)
+					if err := client.CreateComment(issueNumber, comment); err != nil {
+						fmt.Fprintf(os.Stderr, "⚠️  Failed to comment on issue: %v\n", err)
+					} else if err := client.CloseIssue(issueNumber); err != nil {
+						fmt.Fprintf(os.Stderr, "⚠️  Failed to close issue: %v\n", err)
+					} else {
+						fmt.Printf("✅ Closed issue #%d\n", issueNumber)
+					}
+				}
 			}
 		},
 	}
@@ -305,6 +333,7 @@ func main() {
 	runCmd.Flags().IntVar(&issueNumber, "issue", 0, "Fetch goal from a GitHub issue number (requires GITHUB_TOKEN)")
 	runCmd.Flags().StringVar(&githubToken, "github-token", "", "GitHub personal access token (overrides GITHUB_TOKEN env)")
 	runCmd.Flags().StringVar(&githubRepo, "github-repo", "", "GitHub repo as owner/repo (auto-detected from git remote)")
+	runCmd.Flags().Bool("close-on-success", false, "Comment on and close the GitHub issue when all tasks complete (requires --issue)")
 
 	resumeCmd := &cobra.Command{
 		Use:   "resume [session-id]",
@@ -590,7 +619,113 @@ func main() {
 		},
 	}
 
-	rootCmd.AddCommand(initCmd, runCmd, resumeCmd, statusCmd, detectCmd, exportCmd, scaffoldCmd)
+
+	watchCmd := &cobra.Command{
+		Use:   "watch",
+		Short: "Poll GitHub for labelled issues and auto-dispatch pivot runs",
+		Run: func(cmd *cobra.Command, args []string) {
+			label, _ := cmd.Flags().GetString("label")
+			intervalSec, _ := cmd.Flags().GetInt("interval")
+			ghToken, _ := cmd.Flags().GetString("github-token")
+			ghRepo, _ := cmd.Flags().GetString("github-repo")
+			maxPar, _ := cmd.Flags().GetInt("parallel")
+
+			client, err := gh.New(ghToken, ghRepo)
+			if err != nil {
+				fmt.Printf("❌ GitHub client error: %v\n", err)
+				return
+			}
+
+			cfg, err := config.Load()
+			if err != nil {
+				fmt.Printf("❌ Failed to load config: %v\n", err)
+				return
+			}
+
+			fmt.Printf("👁  Watching for issues labelled %q every %ds. Ctrl+C to stop.\n", label, intervalSec)
+			seen := make(map[int]bool)
+
+			ctx, cancel := newSignalCtx()
+			defer cancel()
+
+			for {
+				select {
+				case <-ctx.Done():
+					fmt.Println("\n👋 Watch stopped.")
+					return
+				default:
+				}
+
+				issues, err := client.ListIssues(label)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "⚠️  ListIssues error: %v\n", err)
+				} else {
+					for _, issue := range issues {
+						if seen[issue.Number] {
+							continue
+						}
+						seen[issue.Number] = true
+						fmt.Printf("\n🚀 Dispatching issue #%d: %s\n", issue.Number, issue.Title)
+
+						// Mark issue in-progress immediately.
+						_ = client.AddLabel(issue.Number, "pivot:in-progress")
+
+						goal := gh.IssueGoal(&issue)
+						p := buildPlanner(cfg)
+						tasks, planErr := p.Plan(goal)
+						if planErr != nil {
+							fmt.Fprintf(os.Stderr, "❌ Planning failed for #%d: %v\n", issue.Number, planErr)
+							_ = client.CreateComment(issue.Number, fmt.Sprintf("❌ Pivot planning failed: %v", planErr))
+							continue
+						}
+						if err := planner.Validate(tasks); err != nil {
+							fmt.Fprintf(os.Stderr, "❌ Invalid plan for #%d: %v\n", issue.Number, err)
+							continue
+						}
+
+						s, stateErr := state.New()
+						if stateErr != nil {
+							fmt.Fprintf(os.Stderr, "❌ State error: %v\n", stateErr)
+							continue
+						}
+						sessionID, _ := s.CreateSession(goal)
+						if tasksJSON, err := json.Marshal(tasks); err == nil {
+							_ = s.SaveSessionTasks(sessionID, tasksJSON)
+						}
+
+						orchErr := runOrchestrator(ctx, tasks, sessionID, s, maxPar, cfg)
+						_ = s.Close()
+
+						if orchErr == nil {
+							comment := fmt.Sprintf(
+								"✅ **Pivot completed** session `%s`\n\nRun `pivot export %s` for the full report.",
+								sessionID, sessionID,
+							)
+							_ = client.CreateComment(issue.Number, comment)
+							_ = client.CloseIssue(issue.Number)
+							fmt.Printf("✅ Issue #%d done and closed.\n", issue.Number)
+						} else {
+							_ = client.CreateComment(issue.Number, fmt.Sprintf("❌ Pivot failed: %v\nSession: `%s`", orchErr, sessionID))
+							fmt.Fprintf(os.Stderr, "❌ Issue #%d failed: %v\n", issue.Number, orchErr)
+						}
+					}
+				}
+
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(time.Duration(intervalSec) * time.Second):
+				}
+			}
+		},
+	}
+	watchCmd.Flags().String("label", "pivot", "GitHub issue label to watch for")
+	watchCmd.Flags().Int("interval", 30, "Poll interval in seconds")
+	watchCmd.Flags().String("github-token", "", "GitHub personal access token (overrides GITHUB_TOKEN env)")
+	watchCmd.Flags().String("github-repo", "", "GitHub repo as owner/repo (auto-detected from git remote)")
+	watchCmd.Flags().Int("parallel", 4, "Max parallel tasks per dispatched run")
+
+	rootCmd.AddCommand(initCmd, runCmd, resumeCmd, statusCmd, detectCmd, exportCmd, scaffoldCmd, watchCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
