@@ -301,15 +301,6 @@ func (m *Model) handleEvent(ev core.Event) (tea.Model, tea.Cmd) {
 	return m, m.waitForEvent()
 }
 
-// handleSuspendResume is called after tea.Suspend returns control.
-// We read the checkpoint answer from stdin and resume the TUI.
-func (m *Model) handleSuspendResume(ev core.Event) tea.Cmd {
-	return func() tea.Msg {
-		confirmed := promptCheckpoint(ev.TaskID, ev.Prompt)
-		ev.RespCh <- core.CheckpointResponse{Confirmed: confirmed}
-		return tea.ResumeMsg{}
-	}
-}
 
 // promptCheckpoint reads a y/n answer from stdin after the TUI has suspended.
 // Called synchronously from the main goroutine during ResumeMsg handling.
