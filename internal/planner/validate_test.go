@@ -127,3 +127,32 @@ func TestParseTasks_StripsFences(t *testing.T) {
 		t.Fatal("expected non-nil tasks slice")
 	}
 }
+
+func TestValidate_CheckpointNoTool(t *testing.T) {
+	tasks := []Task{
+		{ID: "gate", Type: TypeCheckpoint, Prompt: "Ready?"},
+	}
+	if err := Validate(tasks); err != nil {
+		t.Errorf("checkpoint without tool should be valid, got: %v", err)
+	}
+}
+
+func TestValidate_CheckpointWithDep(t *testing.T) {
+	tasks := []Task{
+		{ID: "build", Type: TypeTool, Tool: "sh", Args: []string{"-c", "make"}},
+		{ID: "gate", Type: TypeCheckpoint, DependsOn: []string{"build"}, Prompt: "Deploy?"},
+	}
+	if err := Validate(tasks); err != nil {
+		t.Errorf("checkpoint with valid dep should pass, got: %v", err)
+	}
+}
+
+func TestValidate_InvalidType(t *testing.T) {
+	tasks := []Task{
+		{ID: "t1", Type: "plugin", Tool: "sh"},
+	}
+	if err := Validate(tasks); err == nil {
+		t.Error("expected error for invalid type 'plugin'")
+	}
+}
+
