@@ -12,8 +12,8 @@ type ModelRate struct {
 // Prices are per-token (divide per-million rate by 1_000_000).
 // Sources: Anthropic, OpenAI, Groq, Gemini pricing pages (Sep 2025).
 var rates = map[string]ModelRate{
-	// Anthropic
-	"anthropic/claude-opus-4-5":            {3.00 / 1e6, 15.00 / 1e6},
+	// Anthropic (as of Sep 2025)
+	"anthropic/claude-opus-4-5":            {15.00 / 1e6, 75.00 / 1e6},
 	"anthropic/claude-sonnet-4-5":          {3.00 / 1e6, 15.00 / 1e6},
 	"anthropic/claude-3-5-sonnet-20241022": {3.00 / 1e6, 15.00 / 1e6},
 	"anthropic/claude-3-5-haiku-20241022":  {0.80 / 1e6, 4.00 / 1e6},
@@ -23,17 +23,26 @@ var rates = map[string]ModelRate{
 	"openai/gpt-4o-mini":   {0.15 / 1e6, 0.60 / 1e6},
 	"openai/gpt-4-turbo":   {10.00 / 1e6, 30.00 / 1e6},
 	"openai/gpt-3.5-turbo": {0.50 / 1e6, 1.50 / 1e6},
+	"openai/o1-mini":       {1.10 / 1e6, 4.40 / 1e6},
+	"openai/o1":            {15.00 / 1e6, 60.00 / 1e6},
 	// Groq (hosted Llama)
 	"groq/llama-3.1-8b-instant":    {0.05 / 1e6, 0.08 / 1e6},
 	"groq/llama-3.1-70b-versatile": {0.59 / 1e6, 0.79 / 1e6},
+	"groq/llama3-70b-8192":         {0.59 / 1e6, 0.79 / 1e6},
 	"groq/mixtral-8x7b-32768":      {0.24 / 1e6, 0.24 / 1e6},
 	// Gemini
-	"gemini/gemini-1.5-flash": {0.075 / 1e6, 0.30 / 1e6},
-	"gemini/gemini-1.5-pro":   {3.50 / 1e6, 10.50 / 1e6},
-	"gemini/gemini-2.0-flash": {0.10 / 1e6, 0.40 / 1e6},
+	"gemini/gemini-1.5-flash":   {0.075 / 1e6, 0.30 / 1e6},
+	"gemini/gemini-1.5-pro":     {3.50 / 1e6, 10.50 / 1e6},
+	"gemini/gemini-2.0-flash":   {0.075 / 1e6, 0.30 / 1e6},
+	"gemini/gemini-2.5-flash":   {0.075 / 1e6, 0.30 / 1e6},
+	"gemini/gemini-2.5-pro":     {1.25 / 1e6, 10.00 / 1e6},
 	// Ollama local — effectively free
-	"ollama/llama3.2:3b": {0, 0},
-	"ollama/llama3.2:8b": {0, 0},
+	"ollama/llama3.2:3b":  {0, 0},
+	"ollama/llama3.2:8b":  {0, 0},
+	"ollama/llama3.1:8b":  {0, 0},
+	"ollama/llama3.1:70b": {0, 0},
+	"ollama/qwen2.5:7b":   {0, 0},
+	"ollama/mistral:7b":   {0, 0},
 }
 
 // defaultRate is used when a provider/model combination is not in the table.
