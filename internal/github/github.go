@@ -21,11 +21,50 @@ type Client struct {
 
 // Issue represents a GitHub issue.
 type Issue struct {
+	Number int      `json:"number"`
+	Title  string   `json:"title"`
+	Body   string   `json:"body"`
+	State  string   `json:"state"`
+	URL    string   `json:"html_url"`
+	Labels []string `json:"-"` // populated from label objects in ListIssues
+}
+
+// labeledIssueRaw is used to decode GitHub label objects in list responses.
+type labeledIssueRaw struct {
 	Number int    `json:"number"`
 	Title  string `json:"title"`
 	Body   string `json:"body"`
 	State  string `json:"state"`
 	URL    string `json:"html_url"`
+	Labels []struct {
+		Name string `json:"name"`
+	} `json:"labels"`
+}
+
+// HasLabel returns true if the issue already carries the given label name.
+func (c *Client) HasLabel(issue Issue, label string) bool {
+	for _, l := range issue.Labels {
+		if l == label {
+			return true
+		}
+	}
+	return false
+}
+
+// RemoveLabel removes a label from an issue (no-op if label is absent).
+func (c *Client) RemoveLabel(issueNumber int, label string) error {
+	resp, err := c.do("DELETE",
+		fmt.Sprintf("/repos/%s/issues/%d/labels/%s", c.repo, issueNumber, label),
+		"")
+	if err != nil {
+		return fmt.Errorf("remove label: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	// 404 is fine — label was already absent.
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("GitHub API %d removing label", resp.StatusCode)
+	}
+	return nil
 }
 
 // New creates a GitHub client. Token is read from GITHUB_TOKEN env if empty.
@@ -147,9 +186,16 @@ func (c *Client) ListIssues(label string) ([]Issue, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GitHub API %d listing issues", resp.StatusCode)
 	}
-	var issues []Issue
-	if err := json.NewDecoder(resp.Body).Decode(&issues); err != nil {
+	var raw []labeledIssueRaw
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
 		return nil, fmt.Errorf("decode issues: %w", err)
+	}
+	issues := make([]Issue, len(raw))
+	for i, r := range raw {
+		issues[i] = Issue{Number: r.Number, Title: r.Title, Body: r.Body, State: r.State, URL: r.URL}
+		for _, l := range r.Labels {
+			issues[i].Labels = append(issues[i].Labels, l.Name)
+		}
 	}
 	return issues, nil
 }
