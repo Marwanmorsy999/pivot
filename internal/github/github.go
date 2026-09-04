@@ -168,25 +168,33 @@ func IssueGoal(issue *Issue) string {
 }
 
 // detectRepo tries to parse "owner/repo" from git remote.origin.url.
+// It only reads the [remote "origin"] section to avoid picking up upstream remotes.
 func detectRepo() string {
-	// Read .git/config and look for remote "origin"
 	data, err := os.ReadFile(".git/config") // #nosec G304 -- reads local repo config
 	if err != nil {
 		return ""
 	}
+	inOrigin := false
 	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "url = ") {
+		trimmed := strings.TrimSpace(line)
+		// Section headers
+		if strings.HasPrefix(trimmed, "[") {
+			inOrigin = trimmed == `[remote "origin"]`
 			continue
 		}
-		u := strings.TrimPrefix(line, "url = ")
-		// Handle SSH: git@github.com:owner/repo.git
+		if !inOrigin {
+			continue
+		}
+		if !strings.HasPrefix(trimmed, "url = ") {
+			continue
+		}
+		u := strings.TrimPrefix(trimmed, "url = ")
+		// SSH: git@github.com:owner/repo.git
 		if strings.HasPrefix(u, "git@github.com:") {
 			u = strings.TrimPrefix(u, "git@github.com:")
-			u = strings.TrimSuffix(u, ".git")
-			return u
+			return strings.TrimSuffix(u, ".git")
 		}
-		// Handle HTTPS: https://github.com/owner/repo.git
+		// HTTPS: https://github.com/owner/repo.git
 		if strings.Contains(u, "github.com/") {
 			parts := strings.SplitN(u, "github.com/", 2)
 			if len(parts) == 2 {
