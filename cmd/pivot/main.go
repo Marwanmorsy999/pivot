@@ -575,7 +575,17 @@ func main() {
 					fmt.Printf("  - %s: <failed to load goal: %v>\n", id, err)
 					continue
 				}
-				fmt.Printf("  - %s: %s\n", id, goal)
+				status, _ := s.GetSessionStatus(id)
+				icon := "○"
+				switch status {
+				case "completed":
+					icon = "✅"
+				case "failed":
+					icon = "❌"
+				case "active":
+					icon = "▶"
+				}
+				fmt.Printf("  %s %s  %s\n", icon, id, goal)
 			}
 		},
 	}
