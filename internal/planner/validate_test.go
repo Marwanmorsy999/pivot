@@ -129,30 +129,29 @@ func TestParseTasks_StripsFences(t *testing.T) {
 }
 
 func TestValidate_CheckpointNoTool(t *testing.T) {
-	tasks := []Task{
-		{ID: "gate", Type: TypeCheckpoint, Prompt: "Ready?"},
+	tasks := []planner.Task{
+		{ID: "gate", Type: planner.TypeCheckpoint, Prompt: "Ready?"},
 	}
-	if err := Validate(tasks); err != nil {
+	if err := planner.Validate(tasks); err != nil {
 		t.Errorf("checkpoint without tool should be valid, got: %v", err)
 	}
 }
 
 func TestValidate_CheckpointWithDep(t *testing.T) {
-	tasks := []Task{
-		{ID: "build", Type: TypeTool, Tool: "sh", Args: []string{"-c", "make"}},
-		{ID: "gate", Type: TypeCheckpoint, DependsOn: []string{"build"}, Prompt: "Deploy?"},
+	tasks := []planner.Task{
+		{ID: "build", Type: planner.TypeTool, Tool: "sh", Args: []string{"-c", "make"}},
+		{ID: "gate", Type: planner.TypeCheckpoint, DependsOn: []string{"build"}, Prompt: "Deploy?"},
 	}
-	if err := Validate(tasks); err != nil {
+	if err := planner.Validate(tasks); err != nil {
 		t.Errorf("checkpoint with valid dep should pass, got: %v", err)
 	}
 }
 
-func TestValidate_InvalidType(t *testing.T) {
-	tasks := []Task{
+func TestValidate_PluginTypeInvalid(t *testing.T) {
+	tasks := []planner.Task{
 		{ID: "t1", Type: "plugin", Tool: "sh"},
 	}
-	if err := Validate(tasks); err == nil {
+	if err := planner.Validate(tasks); err == nil {
 		t.Error("expected error for invalid type 'plugin'")
 	}
 }
-
