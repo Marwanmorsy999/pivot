@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"bufio"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -67,7 +69,8 @@ type Model struct {
 	totalTokens int
 	startTime   time.Time
 	finalMsg    string
-	width       int
+	width              int
+	pendingCheckpoint *core.Event
 }
 
 // NewModel constructs a TUI model ready to receive events.
@@ -152,6 +155,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.finalMsg = "✅ Session complete"
 		}
 		return m, nil
+	case tea.ResumeMsg:
+		// TUI restored after checkpoint suspend.
+		// The actual prompt happens here, synchronously, before the TUI repaints.
+		if m.pendingCheckpoint != nil {
+			ev := m.pendingCheckpoint
+			m.pendingCheckpoint = nil
+			confirmed := promptCheckpoint(ev.TaskID, ev.Prompt)
+			ev.RespCh <- core.CheckpointResponse{Confirmed: confirmed}
+		}
+		return m, m.waitForEvent()
 	}
 	return m, m.waitForEvent()
 }
@@ -274,9 +287,46 @@ func (m *Model) handleEvent(ev core.Event) (tea.Model, tea.Cmd) {
 			failedStyle.Render("✗"), ev.Message,
 		))
 		return m, nil
+
+	case core.EventCheckpoint:
+		m.events = append(m.events, fmt.Sprintf(
+			"[%s] ⏸  checkpoint [%s]: %s",
+			time.Now().Format("15:04:05"), ev.TaskID, ev.Prompt,
+		))
+		m.pendingCheckpoint = &ev
+		// Suspend releases alt-screen and gives the terminal back.
+		return m, tea.Suspend
 	}
 
 	return m, m.waitForEvent()
+}
+
+// handleSuspendResume is called after tea.Suspend returns control.
+// We read the checkpoint answer from stdin and resume the TUI.
+func (m *Model) handleSuspendResume(ev core.Event) tea.Cmd {
+	return func() tea.Msg {
+		confirmed := promptCheckpoint(ev.TaskID, ev.Prompt)
+		ev.RespCh <- core.CheckpointResponse{Confirmed: confirmed}
+		return tea.ResumeMsg{}
+	}
+}
+
+// promptCheckpoint reads a y/n answer from stdin after the TUI has suspended.
+// Called synchronously from the main goroutine during ResumeMsg handling.
+func promptCheckpoint(taskID, prompt string) bool {
+	fmt.Fprintf(os.Stderr, "\n⏸  CHECKPOINT [%s]\n   %s [y/n]: ", taskID, prompt)
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		answer := strings.TrimSpace(strings.ToLower(scanner.Text()))
+		if answer == "y" || answer == "yes" {
+			return true
+		}
+		if answer == "n" || answer == "no" {
+			return false
+		}
+		fmt.Fprint(os.Stderr, "   Please enter y or n: ")
+	}
+	return false
 }
 
 // Run starts the Bubble Tea program with alt-screen mode.
