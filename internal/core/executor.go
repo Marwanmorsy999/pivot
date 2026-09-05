@@ -307,30 +307,8 @@ func (e *Executor) runOnce(ctx context.Context, task *Task, args []string) (stri
 }
 
 // allowedTools is the validated set of executables pivot may run.
-var allowedTools = map[string]bool{
-	// Unix core
-	"find": true, "grep": true, "awk": true, "sed": true, "cat": true,
-	"echo": true, "wc": true, "sort": true, "uniq": true, "head": true,
-	"tail": true, "xargs": true, "tar": true, "zip": true, "unzip": true,
-	"cut": true, "tr": true, "tee": true, "diff": true, "patch": true,
-	"ls": true, "cp": true, "mv": true, "rm": true, "mkdir": true,
-	"chmod": true, "chown": true, "touch": true, "stat": true, "file": true,
-	"env": true, "printenv": true, "which": true, "date": true, "sleep": true,
-	// Shell passthrough
-	"sh": true, "bash": true,
-	// Network / data
-	"jq": true, "curl": true, "wget": true, "ssh": true, "rsync": true,
-	// Dev tools
-	"git": true, "docker": true, "kubectl": true, "make": true,
-	"python3": true, "python": true, "node": true, "go": true,
-	"npm": true, "npx": true, "pip": true, "pip3": true,
-	"cargo": true, "rustc": true,
-	"terraform": true, "helm": true,
-	// Cloud CLIs
-	"aws": true, "gcloud": true, "az": true,
-	// AI agents
-	"ollama": true, "claude-code": true, "gemini-cli": true,
-}
+// Populated from planner.AllowedTools() — single source of truth in validate.go.
+var allowedTools = planner.AllowedTools()
 
 // commandForTool returns an exec.Cmd for the given validated tool and args.
 func commandForTool(ctx context.Context, tool string, args []string) (*exec.Cmd, error) {
