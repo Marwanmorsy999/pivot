@@ -621,16 +621,12 @@ func main() {
 				}
 			}()
 
-			sessions, err := s.GetSessions()
-			if err != nil {
-				fmt.Printf("❌ Failed to get sessions: %v\n", err)
-				return
+			showFailed, _ := cmd.Flags().GetBool("failed")
+			statusFilter := ""
+			if showFailed {
+				statusFilter = "failed"
 			}
-			if len(sessions) == 0 {
-				fmt.Println("No sessions found.")
-				return
-			}
-			summaries, err := s.GetSessionSummaries()
+			summaries, err := s.GetSessionSummaries(statusFilter)
 			if err != nil {
 				fmt.Printf("❌ Failed to get sessions: %v\n", err)
 				return
