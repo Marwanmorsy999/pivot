@@ -155,10 +155,15 @@ func (s *State) GetSessions() ([]string, error) {
 	return sessions, rows.Err()
 }
 
+// GetFailedTasks returns task IDs whose final (highest-id) journal entry is "failed".
+// Tasks that were retried and ultimately succeeded are excluded.
 func (s *State) GetFailedTasks(sessionID string) ([]string, error) {
 	rows, err := s.db.Query(
-		"SELECT DISTINCT task_id FROM journal WHERE session_id = ? AND status = 'failed'",
-		sessionID,
+		`SELECT task_id FROM journal
+		 WHERE session_id = ?
+		   AND id IN (SELECT MAX(id) FROM journal WHERE session_id = ? GROUP BY task_id)
+		   AND status = 'failed'`,
+		sessionID, sessionID,
 	)
 	if err != nil {
 		return nil, err
