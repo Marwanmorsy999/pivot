@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -118,7 +119,7 @@ func TestSaveConfig_DoesNotPersistAPIKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read config: %v", err)
 	}
-	if len(data) > 0 && contains(string(data), "sk-") {
+	if strings.Contains(string(data), "sk-") {
 		t.Errorf("API key written to config file — security regression\nfile contents:\n%s", data)
 	}
 }
@@ -165,24 +166,11 @@ func TestLoad_CorruptFile_ReturnsError(t *testing.T) {
 }
 
 func TestConfigFromDetection_WorktreeDisabled(t *testing.T) {
-	r := DetectionResult{
+	r := &DetectionResult{
 		LocalTools: map[string]bool{"git": true, "docker": true},
 	}
 	cfg := ConfigFromDetection(r)
 	if cfg.Worktree.Enabled {
 		t.Error("worktree should remain disabled by default even when git+docker present")
 	}
-}
-
-func contains(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub || len(s) > 0 && containsHelper(s, sub))
-}
-
-func containsHelper(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
 }
