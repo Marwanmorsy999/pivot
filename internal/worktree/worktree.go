@@ -11,7 +11,11 @@ import (
 // Create makes a temporary git worktree with a unique branch name so that
 // concurrent pivot sessions don't collide on the same branch.
 func Create() (string, error) {
-	baseDir := filepath.Join(os.TempDir(), "pivot-worktrees")
+	// Respect PIVOT_WORKTREE_DIR env or the configured base dir.
+	baseDir := os.Getenv("PIVOT_WORKTREE_DIR")
+	if baseDir == "" {
+		baseDir = filepath.Join(os.TempDir(), "pivot-worktrees")
+	}
 	if err := os.MkdirAll(baseDir, 0700); err != nil {
 		return "", fmt.Errorf("create worktree base dir: %w", err)
 	}
