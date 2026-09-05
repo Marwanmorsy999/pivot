@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -365,6 +366,9 @@ func main() {
 	runCmd.Flags().StringVar(&githubToken, "github-token", "", "GitHub personal access token (overrides GITHUB_TOKEN env)")
 	runCmd.Flags().StringVar(&githubRepo, "github-repo", "", "GitHub repo as owner/repo (auto-detected from git remote)")
 	runCmd.Flags().Bool("close-on-success", false, "Comment on and close the GitHub issue when all tasks complete (requires --issue)")
+	runCmd.Flags().String("model", "", "Override the model for this run (e.g. llama3.2:8b, gpt-4o, claude-sonnet-4-5)")
+	runCmd.Flags().String("provider", "", "Override the provider for this run (e.g. ollama, anthropic, openai)")
+	runCmd.Flags().String("endpoint", "", "Override the API endpoint for this run")
 
 	resumeCmd := &cobra.Command{
 		Use:   "resume [session-id]",
@@ -567,39 +571,68 @@ func main() {
 		Use:   "detect",
 		Short: "Detect all providers and local setup",
 		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println("🔍 Scanning for AI providers and local models...")
 			r := config.Detect()
-			fmt.Println("🔍 Pivot Auto-Detection Report")
-			fmt.Println("──────────────────────────────")
-			fmt.Println("AI Providers Found:")
-			if len(r.Providers) == 0 {
-				fmt.Println("  (none — set ANTHROPIC_API_KEY, OPENAI_API_KEY, GROQ_API_KEY, or run Ollama locally)")
-			}
-			for name, found := range r.Providers {
-				status := "❌"
-				if found {
-					status = "✅"
+			fmt.Println()
+			fmt.Println("☁️  Cloud Providers:")
+			cloudProviders := []string{"anthropic", "openai", "groq", "gemini", "mistral", "together", "openrouter"}
+			anyCloud := false
+			for _, p := range cloudProviders {
+				if r.Providers[p] {
+					fmt.Printf("  ✅ %s\n", p)
+					anyCloud = true
 				}
-				fmt.Printf("  %s %s\n", status, name)
 			}
-			fmt.Println("Local Tools Detected:")
-			if len(r.LocalTools) == 0 {
+			if !anyCloud {
+				fmt.Println("  (none — set ANTHROPIC_API_KEY, OPENAI_API_KEY, GROQ_API_KEY, etc.)")
+			}
+			fmt.Println()
+			fmt.Println("🖥️  Local Servers:")
+			if r.Providers["ollama"] {
+				fmt.Println("  ✅ ollama (running)")
+			}
+			if r.Providers["local-openai"] {
+				fmt.Println("  ✅ OpenAI-compatible server (LMStudio / Jan / Llamafile / KoboldCPP)")
+			}
+			if !r.Providers["ollama"] && !r.Providers["local-openai"] {
+				fmt.Println("  (none running — start Ollama, LMStudio, Jan, or Llamafile)")
+			}
+			fmt.Println()
+			fmt.Println("🤖 Local Models:")
+			ggufCount := 0
+			for _, m := range r.LocalModels {
+				if m.Provider == "gguf" {
+					ggufCount++
+					continue
+				}
+				size := ""
+				if m.SizeGB > 0 {
+					size = fmt.Sprintf(" (%.1fGB)", m.SizeGB)
+				}
+				fmt.Printf("  ✅ %s [%s]%s\n", m.Name, m.Provider, size)
+			}
+			if ggufCount > 0 {
+				fmt.Printf("  📦 %d GGUF file(s) found on disk (run 'pivot models' to list)\n", ggufCount)
+			}
+			if len(r.LocalModels) == 0 {
 				fmt.Println("  (none found)")
-			} else {
-				for name := range r.LocalTools {
-					fmt.Printf("  ✅ %s\n", name)
-				}
 			}
+			fmt.Println()
+			fmt.Printf("🔧 Local Tools: %d detected\n", len(r.LocalTools))
 			fmt.Println("──────────────────────────────")
 			if r.DetectedProvider == "" {
-				fmt.Println("⚠️  No provider detected. Set an API key env var or start Ollama.")
+				fmt.Println("⚠️  No provider detected.")
+				fmt.Println("   Set an API key env var (e.g. ANTHROPIC_API_KEY=sk-...) or start a local server.")
 			} else {
-				fmt.Printf("🏆 Best Provider: %s (model: %s)\n", r.DetectedProvider, r.DetectedModel)
-				fmt.Printf("🔌 Endpoint: %s\n", r.DetectedEndpoint)
+				fmt.Printf("🏆 Best pick: %s / %s\n", r.DetectedProvider, r.DetectedModel)
+				fmt.Printf("🔌 Endpoint:  %s\n", r.DetectedEndpoint)
 				if r.DetectedAPIKey != "" {
-					fmt.Println("🔑 API Key: configured")
+					fmt.Println("🔑 API key:   configured (from env)")
 				}
 			}
-			fmt.Println("\n💡 Run 'pivot init' to apply auto-config.")
+			fmt.Println()
+			fmt.Println("💡 Run 'pivot init' to apply this config.")
+			fmt.Println("💡 Run 'pivot models' to list all local models.")
 		},
 	}
 
@@ -776,7 +809,170 @@ func main() {
 			fmt.Printf("✅ Deleted session %s\n", args[0])
 		},
 	}
-	rootCmd.AddCommand(initCmd, runCmd, resumeCmd, statusCmd, detectCmd, exportCmd, scaffoldCmd, watchCmd, deleteCmd)
+
+	modelsCmd := &cobra.Command{
+		Use:   "models",
+		Short: "List all local models detected on this device",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println("🔍 Scanning for local models...")
+			r := config.Detect()
+			if len(r.LocalModels) == 0 {
+				fmt.Println("No local models found.")
+				fmt.Println("\nTo get started:")
+				fmt.Println("  • Install Ollama: https://ollama.ai  then run: ollama pull llama3.2")
+				fmt.Println("  • Install LMStudio: https://lmstudio.ai  (GUI model manager)")
+				fmt.Println("  • Download a GGUF file and place it in ~/models/")
+				return
+			}
+			fmt.Println()
+			var running, gguf []config.LocalModel
+			for _, m := range r.LocalModels {
+				if m.Provider == "gguf" {
+					gguf = append(gguf, m)
+				} else {
+					running = append(running, m)
+				}
+			}
+			if len(running) > 0 {
+				fmt.Println("🟢 Running (via local server):")
+				for _, m := range running {
+					size := ""
+					if m.SizeGB > 0 {
+						size = fmt.Sprintf(" (%.1fGB)", m.SizeGB)
+					}
+					fmt.Printf("   %-40s [%s]%s\n", m.Name, m.Provider, size)
+					fmt.Printf("   %s pivot run --model %s --provider %s \"your goal\"\n", "→", m.Name, m.Provider)
+					fmt.Println()
+				}
+			}
+			if len(gguf) > 0 {
+				fmt.Println("📦 GGUF files on disk (load with Ollama or Llamafile):")
+				for _, m := range gguf {
+					size := ""
+					if m.SizeGB > 0 {
+						size = fmt.Sprintf(" %.1fGB", m.SizeGB)
+					}
+					fmt.Printf("   %s%s\n", m.Name, size)
+					fmt.Printf("   path: %s\n", m.Path)
+					fmt.Println()
+				}
+				fmt.Println("💡 To use a GGUF: llamafile --model /path/to/model.gguf  then: pivot run --provider local-openai --endpoint http://localhost:8080")
+			}
+		},
+	}
+
+	setupCmd := &cobra.Command{
+		Use:   "setup",
+		Short: "Interactive setup wizard — detect providers, pick one, write config",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println("🚀 Pivot Setup Wizard")
+			fmt.Println("─────────────────────")
+			fmt.Println("Scanning your system...")
+			r := config.Detect()
+			fmt.Println()
+
+			// Show what was found.
+			type option struct {
+				desc, provider, model, endpoint string
+			}
+			var opts []option
+
+			cloudMap := map[string]struct{ model, endpoint string }{
+				"anthropic":  {"claude-sonnet-4-5", "https://api.anthropic.com/v1/messages"},
+				"openai":     {"gpt-4o-mini", "https://api.openai.com/v1/chat/completions"},
+				"groq":       {"llama-3.1-8b-instant", "https://api.groq.com/openai/v1/chat/completions"},
+				"gemini":     {"gemini-1.5-flash", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"},
+				"mistral":    {"mistral-small-latest", "https://api.mistral.ai/v1/chat/completions"},
+				"together":   {"meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo", "https://api.together.xyz/v1/chat/completions"},
+				"openrouter": {"meta-llama/llama-3.1-8b-instruct:free", "https://openrouter.ai/api/v1/chat/completions"},
+			}
+			for _, p := range []string{"anthropic", "openai", "groq", "gemini", "mistral", "together", "openrouter"} {
+				if r.Providers[p] {
+					cm := cloudMap[p]
+					opts = append(opts, option{fmt.Sprintf("☁️  %s / %s (API key detected)", p, cm.model), p, cm.model, cm.endpoint})
+				}
+			}
+			for _, m := range r.LocalModels {
+				if m.Provider == "gguf" {
+					continue
+				}
+				size := ""
+				if m.SizeGB > 0 {
+					size = fmt.Sprintf(" %.1fGB", m.SizeGB)
+				}
+				opts = append(opts, option{
+					fmt.Sprintf("🖥️  %s / %s%s (local)", m.Provider, m.Name, size),
+					m.Provider, m.Name, m.Endpoint,
+				})
+			}
+
+			if len(opts) == 0 {
+				fmt.Println("❌ Nothing detected.")
+				fmt.Println()
+				fmt.Println("Options to get started:")
+				fmt.Println("  export ANTHROPIC_API_KEY=sk-ant-...   then run: pivot setup")
+				fmt.Println("  export OPENAI_API_KEY=sk-...          then run: pivot setup")
+				fmt.Println("  brew install ollama && ollama pull llama3.2  then run: pivot setup")
+				fmt.Println("  Download LMStudio from https://lmstudio.ai, load a model, then run: pivot setup")
+				return
+			}
+
+			fmt.Println("Found the following options:")
+			for i, o := range opts {
+				fmt.Printf("  [%d] %s\n", i+1, o.desc)
+			}
+			fmt.Println()
+
+			// Auto-select if only one option.
+			selected := 0
+			if len(opts) == 1 {
+				selected = 0
+				fmt.Printf("Auto-selecting [1] (only option)\n")
+			} else {
+				fmt.Printf("Enter number [1-%d] (Enter = 1): ", len(opts))
+				var input string
+				fmt.Scanln(&input)
+				input = strings.TrimSpace(input)
+				if input == "" {
+					selected = 0
+				} else {
+					var n int
+					if _, err := fmt.Sscanf(input, "%d", &n); err != nil || n < 1 || n > len(opts) {
+						fmt.Println("Invalid selection, using [1]")
+						selected = 0
+					} else {
+						selected = n - 1
+					}
+				}
+			}
+
+			pick := opts[selected]
+			cfg := config.ConfigFromDetection(r)
+			cfg.Planner.Provider = pick.provider
+			cfg.Planner.Model = pick.model
+			cfg.Planner.Endpoint = pick.endpoint
+			cfg.Planner.APIKey = r.DetectedAPIKey
+
+			s, err := state.New()
+			if err == nil {
+				_ = s.Close()
+			}
+			if err := config.SaveDetected(cfg); err != nil {
+				fmt.Printf("❌ Failed to save config: %v\n", err)
+				return
+			}
+			fmt.Println()
+			fmt.Printf("✅ Config saved: %s / %s\n", pick.provider, pick.model)
+			fmt.Printf("   Endpoint: %s\n", pick.endpoint)
+			fmt.Println()
+			fmt.Println("You're ready! Try:")
+			fmt.Println('  pivot run "list all Go files and count lines"')
+			fmt.Println('  pivot scaffold my-workflow  # generate a workflow YAML')
+			fmt.Println('  pivot models               # list all local models')
+		},
+	}
+
+	rootCmd.AddCommand(initCmd, runCmd, resumeCmd, statusCmd, detectCmd, exportCmd, scaffoldCmd, watchCmd, deleteCmd, modelsCmd, setupCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
