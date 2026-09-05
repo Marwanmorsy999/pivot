@@ -1,6 +1,7 @@
 package github_test
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -18,9 +19,16 @@ func TestNewClient_MissingToken(t *testing.T) {
 func TestNewClient_MissingRepo(t *testing.T) {
 	// Run from a temp dir so detectRepo finds no .git/config.
 	tmp := t.TempDir()
-	t.Chdir(tmp)
-	_, err := github.New("fake-token", "")
-	if err == nil {
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	_, clientErr := github.New("fake-token", "")
+	if clientErr == nil {
 		t.Error("expected error when no repo provided and not in a git repo")
 	}
 }
