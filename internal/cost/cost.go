@@ -54,10 +54,11 @@ func RateFor(provider, model string) ModelRate {
 	if r, ok := rates[key]; ok {
 		return r
 	}
-	// Try prefix match on model (e.g. "claude-3-5-sonnet" matches the dated variant).
-	prefix := strings.ToLower(provider) + "/"
+	// Try prefix match: "provider/model-stem" must appear at the start of a key,
+	// not just as a substring, to avoid "claude-3" matching "claude-3-5-sonnet".
+	stem := strings.ToLower(provider) + "/" + strings.ToLower(model)
 	for k, r := range rates {
-		if strings.HasPrefix(k, prefix) && strings.Contains(k, strings.ToLower(model)) {
+		if strings.HasPrefix(k, stem) {
 			return r
 		}
 	}
