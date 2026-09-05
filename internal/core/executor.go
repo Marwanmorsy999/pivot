@@ -254,13 +254,19 @@ func (e *Executor) Execute(ctx context.Context, task *Task, eventCh chan Event) 
 		fmt.Fprintf(os.Stderr, "after-hook warning for task %s: %v\n", task.ID, hookErr)
 	}
 
+	const maxOutputBytes = 1 << 20 // 1 MB — prevent unbounded SQLite rows
+	storedOutput := outputStr
+	if len(storedOutput) > maxOutputBytes {
+		storedOutput = storedOutput[:maxOutputBytes] + "\n... (output truncated at 1MB)"
+	}
+
 	task.Status = "completed"
-	task.Output = outputStr
-	e.SetOutput(task.ID, outputStr)
-	eventCh <- Event{Type: EventTaskUpdate, TaskID: task.ID, Status: "completed", Output: outputStr}
+	task.Output = storedOutput
+	e.SetOutput(task.ID, storedOutput)
+	eventCh <- Event{Type: EventTaskUpdate, TaskID: task.ID, Status: "completed", Output: storedOutput}
 	e.logEntry(state.JournalEntry{
 		SessionID: e.SessionID, TaskID: task.ID, Tool: task.Tool,
-		Args: args, Output: outputStr,
+		Args: args, Output: storedOutput,
 		Status: "completed", Cost: costUSD, Tokens: tokenCount,
 	})
 	return nil
