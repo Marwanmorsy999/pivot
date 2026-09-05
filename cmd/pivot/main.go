@@ -33,16 +33,21 @@ func buildPlanner(cfg *config.Config) planner.Planner {
 			Model:    cfg.Planner.Model,
 			Endpoint: cfg.Planner.Endpoint,
 		}
-	case "openai", "groq", "gemini":
+	case "openai", "groq", "gemini", "mistral", "together", "openrouter", "local-openai":
+		// All OpenAI-compatible providers — pick default endpoint if not configured.
 		endpoint := cfg.Planner.Endpoint
 		if endpoint == "" {
-			switch cfg.Planner.Provider {
-			case "groq":
-				endpoint = "https://api.groq.com/openai/v1/chat/completions"
-			case "gemini":
-				endpoint = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-			default:
-				endpoint = "https://api.openai.com/v1/chat/completions"
+			defaultEndpoints := map[string]string{
+				"openai":      "https://api.openai.com/v1/chat/completions",
+				"groq":        "https://api.groq.com/openai/v1/chat/completions",
+				"gemini":      "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+				"mistral":     "https://api.mistral.ai/v1/chat/completions",
+				"together":    "https://api.together.xyz/v1/chat/completions",
+				"openrouter":  "https://openrouter.ai/api/v1/chat/completions",
+				"local-openai": "http://localhost:1234/v1/chat/completions",
+			}
+			if ep, ok := defaultEndpoints[cfg.Planner.Provider]; ok {
+				endpoint = ep
 			}
 		}
 		return &planner.OpenAPlanner{
@@ -51,6 +56,7 @@ func buildPlanner(cfg *config.Config) planner.Planner {
 			Endpoint: endpoint,
 		}
 	default:
+		// Ollama and any unknown local provider.
 		return &planner.OllamaPlanner{
 			Endpoint: cfg.Planner.Endpoint,
 			Model:    cfg.Planner.Model,
