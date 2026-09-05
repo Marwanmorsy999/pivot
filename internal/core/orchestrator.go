@@ -118,7 +118,10 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		sem = make(chan struct{}, o.opts.MaxParallel)
 	}
 
-	var firstErr atomic.Value // stores the first error encountered
+	// firstErr stores the first task error. We use a wrapping struct to avoid
+	// the nil-interface-stored-as-any footgun with atomic.Value.
+	type errBox struct{ err error }
+	var firstErr atomic.Value
 
 	for _, wave := range waves {
 		select {
@@ -174,7 +177,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			continue
 		}
 
-			// Checkpoints must run serially — they block on stdin and must not
+		// Checkpoints must run serially — they block on stdin and must not
 		// be launched concurrently with each other or with tool tasks.
 		// Split the runnable list: tools run concurrently, then each checkpoint runs alone.
 		var toolIDs, checkpointIDs []string
@@ -200,7 +203,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 
 				task := graph.GetTask(taskID)
 				if execErr := executor.Execute(ctx, task, o.eventCh); execErr != nil {
-					firstErr.CompareAndSwap(nil, execErr)
+					firstErr.CompareAndSwap(nil, errBox{execErr})
 					taskMapMu.Lock()
 					taskMap[taskID].Status = "failed"
 					taskMapMu.Unlock()
@@ -218,7 +221,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			}
 			task := graph.GetTask(id)
 			if execErr := executor.Execute(ctx, task, o.eventCh); execErr != nil {
-				firstErr.CompareAndSwap(nil, execErr)
+				firstErr.CompareAndSwap(nil, errBox{execErr})
 				taskMapMu.Lock()
 				taskMap[id].Status = "failed"
 				taskMapMu.Unlock()
@@ -226,7 +229,10 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		}
 	}
 
-	finalErr := firstErr.Load()
+	var finalErr error
+	if box, ok := firstErr.Load().(errBox); ok {
+		finalErr = box.err
+	}
 
 	status := "completed"
 	if finalErr != nil {
@@ -247,8 +253,5 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		Message: msg,
 	}
 
-	if finalErr != nil {
-		return finalErr.(error)
-	}
-	return nil
+	return finalErr
 }
