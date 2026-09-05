@@ -53,15 +53,15 @@ func New() (*State, error) {
 }
 
 func (s *State) migrate() error {
-	_, err := s.db.Exec(`
-		CREATE TABLE IF NOT EXISTS sessions (
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS sessions (
 			id TEXT PRIMARY KEY,
 			goal TEXT,
 			tasks_json TEXT,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			status TEXT DEFAULT 'active'
-		);
-		CREATE TABLE IF NOT EXISTS journal (
+		)`,
+		`CREATE TABLE IF NOT EXISTS journal (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			session_id TEXT,
 			task_id TEXT,
@@ -74,14 +74,14 @@ func (s *State) migrate() error {
 			tokens INTEGER DEFAULT 0,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (session_id) REFERENCES sessions(id)
-		);
-		CREATE INDEX IF NOT EXISTS idx_journal_session_task
-			ON journal(session_id, task_id);
-		CREATE INDEX IF NOT EXISTS idx_journal_session_status
-			ON journal(session_id, status);
-	`)
-	if err != nil {
-		return fmt.Errorf("state migration: %w", err)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_journal_session_task ON journal(session_id, task_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_journal_session_status ON journal(session_id, status)`,
+	}
+	for _, stmt := range stmts {
+		if _, err := s.db.Exec(stmt); err != nil {
+			return fmt.Errorf("state migration: %w", err)
+		}
 	}
 	return nil
 }
@@ -184,14 +184,20 @@ func (s *State) IsTaskCompleted(sessionID, taskID string) (bool, error) {
 	return count > 0, err
 }
 
-// DeleteSession removes a session and all its journal entries.
+// DeleteSession removes a session and all its journal entries atomically.
 func (s *State) DeleteSession(sessionID string) error {
-	_, err := s.db.Exec("DELETE FROM journal WHERE session_id = ?", sessionID)
+	tx, err := s.db.Begin()
 	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec("DELETE FROM journal WHERE session_id = ?", sessionID); err != nil {
 		return fmt.Errorf("delete journal: %w", err)
 	}
-	_, err = s.db.Exec("DELETE FROM sessions WHERE id = ?", sessionID)
-	return err
+	if _, err := tx.Exec("DELETE FROM sessions WHERE id = ?", sessionID); err != nil {
+		return fmt.Errorf("delete session: %w", err)
+	}
+	return tx.Commit()
 }
 
 // SessionSummary holds the data shown by pivot status.
