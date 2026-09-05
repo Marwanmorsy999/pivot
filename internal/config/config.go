@@ -127,6 +127,8 @@ func (r *DetectionResult) pickBestProvider() {
 	}
 }
 
+// Load reads config from disk then overlays API keys from environment variables.
+// API keys are never written to disk; they must be set in the environment.
 func Load() (*Config, error) {
 	cfgFile, err := paths.ConfigFile()
 	if err != nil {
@@ -134,16 +136,49 @@ func Load() (*Config, error) {
 	}
 	data, err := os.ReadFile(cfgFile) // #nosec G304 -- PIVOT_HOME is an explicit user-configured data directory
 	if err != nil {
-		return defaultConfig(), nil
+		if os.IsNotExist(err) {
+			cfg := defaultConfig()
+			overlayEnvKeys(cfg)
+			return cfg, nil
+		}
+		return nil, fmt.Errorf("read config file: %w", err)
 	}
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse config file: %w", err)
 	}
 	if cfg.Worktree.BaseDir == "" {
 		cfg.Worktree.BaseDir = filepath.Join(os.TempDir(), "pivot-worktrees")
 	}
+	// API key on disk is always empty (stripped by saveConfig).
+	// Always overlay from env so keys set after pivot init still work.
+	overlayEnvKeys(&cfg)
 	return &cfg, nil
+}
+
+// overlayEnvKeys fills in API keys from environment variables.
+// Called after loading config from disk since keys are never persisted.
+func overlayEnvKeys(cfg *Config) {
+	switch cfg.Planner.Provider {
+	case "anthropic":
+		if k := os.Getenv("ANTHROPIC_API_KEY"); k != "" {
+			cfg.Planner.APIKey = k
+		}
+	case "openai":
+		if k := os.Getenv("OPENAI_API_KEY"); k != "" {
+			cfg.Planner.APIKey = k
+		}
+	case "groq":
+		if k := os.Getenv("GROQ_API_KEY"); k != "" {
+			cfg.Planner.APIKey = k
+		}
+	case "gemini":
+		if k := os.Getenv("GEMINI_API_KEY"); k != "" {
+			cfg.Planner.APIKey = k
+		} else if k := os.Getenv("GOOGLE_API_KEY"); k != "" {
+			cfg.Planner.APIKey = k
+		}
+	}
 }
 
 func defaultConfig() *Config {
@@ -171,9 +206,8 @@ func ConfigFromDetection(r *DetectionResult) *Config {
 	if r.DetectedAPIKey != "" {
 		cfg.Planner.APIKey = r.DetectedAPIKey
 	}
-	if r.LocalTools["git"] && r.LocalTools["docker"] {
-		cfg.Worktree.Enabled = true
-	}
+	// Worktree mode requires a git repo in CWD — leave disabled by default.
+	// Users opt in via config or --worktree flag.
 	return cfg
 }
 
