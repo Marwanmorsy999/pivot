@@ -37,12 +37,27 @@ var rates = map[string]ModelRate{
 	"gemini/gemini-2.5-flash":   {0.075 / 1e6, 0.30 / 1e6},
 	"gemini/gemini-2.5-pro":     {1.25 / 1e6, 10.00 / 1e6},
 	// Ollama local — effectively free
-	"ollama/llama3.2:3b":  {0, 0},
-	"ollama/llama3.2:8b":  {0, 0},
-	"ollama/llama3.1:8b":  {0, 0},
-	"ollama/llama3.1:70b": {0, 0},
-	"ollama/qwen2.5:7b":   {0, 0},
-	"ollama/mistral:7b":   {0, 0},
+	"ollama/llama3.2:3b":    {0, 0},
+	"ollama/llama3.2:8b":    {0, 0},
+	"ollama/llama3.1:8b":    {0, 0},
+	"ollama/llama3.1:70b":   {0, 0},
+	"ollama/qwen2.5:7b":     {0, 0},
+	"ollama/qwen2.5:14b":    {0, 0},
+	"ollama/mistral:7b":     {0, 0},
+	"ollama/phi4:14b":       {0, 0},
+	"ollama/deepseek-r1:8b": {0, 0},
+	// Local servers (LMStudio, Jan, Llamafile, KoboldCPP) — effectively free
+	"local-openai/local": {0, 0},
+	"gguf/local":         {0, 0},
+	// Mistral cloud
+	"mistral/mistral-small-latest":  {0.20 / 1e6, 0.60 / 1e6},
+	"mistral/mistral-large-latest":  {2.00 / 1e6, 6.00 / 1e6},
+	"mistral/codestral-latest":      {0.20 / 1e6, 0.60 / 1e6},
+	// Together AI
+	"together/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo":  {0.18 / 1e6, 0.18 / 1e6},
+	"together/meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": {0.88 / 1e6, 0.88 / 1e6},
+	// OpenRouter (free tier)
+	"openrouter/meta-llama/llama-3.1-8b-instruct:free": {0, 0},
 }
 
 // defaultRate is used when a provider/model combination is not in the table.
