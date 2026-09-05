@@ -1,6 +1,6 @@
 module github.com/Marwanmorsy999/pivot
 
-go 1.22
+go 1.23
 
 require (
 	github.com/charmbracelet/bubbles v0.20.0
