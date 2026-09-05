@@ -1,6 +1,7 @@
 package github_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Marwanmorsy999/pivot/internal/github"
@@ -15,9 +16,13 @@ func TestNewClient_MissingToken(t *testing.T) {
 }
 
 func TestNewClient_MissingRepo(t *testing.T) {
+	// Run from a temp dir so detectRepo finds no .git/config.
+	tmp := t.TempDir()
+	t.Chdir(tmp)
 	_, err := github.New("fake-token", "")
-	// Will either succeed with detected repo or fail — just should not panic
-	_ = err
+	if err == nil {
+		t.Error("expected error when no repo provided and not in a git repo")
+	}
 }
 
 func TestNewClient_Valid(t *testing.T) {
@@ -50,14 +55,7 @@ func TestIssueGoal_WithBody(t *testing.T) {
 }
 
 func TestIssueGoal_LongBodyTruncated(t *testing.T) {
-	body := string(make([]byte, 1000))
-	for i := range body {
-		_ = i
-	}
-	longBody := ""
-	for i := 0; i < 1000; i++ {
-		longBody += "x"
-	}
+	longBody := strings.Repeat("x", 1000)
 	issue := &github.Issue{Number: 1, Title: "T", Body: longBody}
 	goal := github.IssueGoal(issue)
 	if !containsAll(goal, "...") {
