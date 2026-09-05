@@ -67,10 +67,10 @@ type Model struct {
 	done        bool
 	totalCost   float64
 	totalTokens int
-	startTime   time.Time
-	finalMsg    string
+	startTime          time.Time
+	finalMsg           string
 	width              int
-	pendingCheckpoint *core.Event
+	pendingCheckpoint  *core.Event
 }
 
 // NewModel constructs a TUI model ready to receive events.
@@ -301,7 +301,6 @@ func (m *Model) handleEvent(ev core.Event) (tea.Model, tea.Cmd) {
 
 	return m, m.waitForEvent()
 }
-
 
 // promptCheckpoint reads a y/n answer from stdin after the TUI has suspended.
 // Called synchronously from the main goroutine during ResumeMsg handling.
