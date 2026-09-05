@@ -16,17 +16,19 @@ type OllamaPlanner struct {
 }
 
 func (p *OllamaPlanner) Plan(goal string) ([]Task, error) {
-	if p.Endpoint == "" {
-		p.Endpoint = "http://localhost:11434"
+	endpoint := p.Endpoint
+	if endpoint == "" {
+		endpoint = "http://localhost:11434"
 	}
-	if p.Model == "" {
-		p.Model = "llama3.2:3b"
+	model := p.Model
+	if model == "" {
+		model = "llama3.2:3b"
 	}
 
 	prompt := systemPrompt + "\n\nGoal: " + goal + "\n\nJSON:"
 
 	reqBody := map[string]interface{}{
-		"model":  p.Model,
+		"model":  model,
 		"prompt": prompt,
 		"stream": false,
 		"format": "json",
@@ -37,7 +39,7 @@ func (p *OllamaPlanner) Plan(goal string) ([]Task, error) {
 	}
 
 	client := &http.Client{Timeout: 120 * time.Second}
-	resp, err := client.Post(p.Endpoint+"/api/generate", "application/json", bytes.NewBuffer(jsonData)) // #nosec G107 -- endpoint is user-configured via config file
+	resp, err := client.Post(endpoint+"/api/generate", "application/json", bytes.NewBuffer(jsonData)) // #nosec G107 -- endpoint is user-configured via config file
 	if err != nil {
 		return nil, fmt.Errorf("request to Ollama: %w", err)
 	}
