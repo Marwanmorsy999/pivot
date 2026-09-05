@@ -30,7 +30,7 @@ func Create() (string, error) {
 	cmd := exec.Command("git", "worktree", "add", dir, "-b", branchName) // #nosec G204,G702 -- "git" is hardcoded; dir/branchName from os.MkdirTemp (PIVOT_WORKTREE_DIR is user-trusted env)
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		if removeErr := os.RemoveAll(dir); removeErr != nil {
+		if removeErr := os.RemoveAll(dir); removeErr != nil { // #nosec G703 -- dir from MkdirTemp under user-trusted PIVOT_WORKTREE_DIR
 			return "", fmt.Errorf("git worktree add: %w (cleanup: %v)", err, removeErr)
 		}
 		return "", fmt.Errorf("git worktree add: %w", err)
