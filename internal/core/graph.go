@@ -63,6 +63,8 @@ func (g *Graph) Order() ([]string, error) {
 				queue = append(queue, next)
 			}
 		}
+		// Re-sort so processing order is fully deterministic regardless of map iteration.
+		sort.Strings(queue)
 	}
 
 	if len(result) != len(g.tasks) {
@@ -102,7 +104,14 @@ func (g *Graph) Waves() ([][]string, error) {
 		d := depth[id]
 		waves[d] = append(waves[d], id)
 	}
-	return waves, nil
+	// Filter out empty waves — can occur when depth values are non-contiguous.
+	result := waves[:0]
+	for _, w := range waves {
+		if len(w) > 0 {
+			result = append(result, w)
+		}
+	}
+	return result, nil
 }
 
 // GetTask returns the Task for the given ID.
