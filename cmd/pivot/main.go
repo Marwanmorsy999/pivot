@@ -563,8 +563,6 @@ func main() {
 			fmt.Printf("   Edit it and run: pivot run --file %s\n", outPath)
 		},
 	}
-	statusCmd.Flags().Bool("failed", false, "Show only failed sessions")
-
 	detectCmd := &cobra.Command{
 		Use:   "detect",
 		Short: "Detect all providers and local setup",
@@ -649,7 +647,7 @@ func main() {
 			}
 		},
 	}
-
+	statusCmd.Flags().Bool("failed", false, "Show only failed sessions")
 
 	watchCmd := &cobra.Command{
 		Use:   "watch",
