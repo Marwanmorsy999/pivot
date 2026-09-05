@@ -39,6 +39,16 @@ var validTypes = map[TaskType]bool{
 	TypeCheckpoint: true,
 }
 
+// AllowedTools returns the set of permitted executable names.
+// Executor uses this to stay in sync with validation without duplication.
+func AllowedTools() map[string]bool {
+	result := make(map[string]bool, len(validTools))
+	for k, v := range validTools {
+		result[k] = v
+	}
+	return result
+}
+
 // Validate checks a task plan for structural correctness before execution.
 // It verifies: non-empty plan, unique IDs, valid types, permitted tools,
 // and dependency graph integrity (no references to undefined task IDs).
