@@ -563,7 +563,6 @@ func main() {
 			fmt.Printf("   Edit it and run: pivot run --file %s\n", outPath)
 		},
 	}
-
 	statusCmd.Flags().Bool("failed", false, "Show only failed sessions")
 
 	detectCmd := &cobra.Command{
