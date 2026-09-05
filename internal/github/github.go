@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -129,7 +130,10 @@ func (c *Client) GetIssue(number int) (*Issue, error) {
 
 // CreateComment posts a comment on an issue.
 func (c *Client) CreateComment(issueNumber int, body string) error {
-	payload, _ := json.Marshal(map[string]string{"body": body})
+	payload, err := json.Marshal(map[string]string{"body": body})
+	if err != nil {
+		return fmt.Errorf("marshal comment: %w", err)
+	}
 	resp, err := c.do("POST",
 		fmt.Sprintf("/repos/%s/issues/%d/comments", c.repo, issueNumber),
 		string(payload))
@@ -145,7 +149,10 @@ func (c *Client) CreateComment(issueNumber int, body string) error {
 
 // AddLabel adds a label to an issue (creates the label if missing).
 func (c *Client) AddLabel(issueNumber int, label string) error {
-	payload, _ := json.Marshal(map[string][]string{"labels": {label}})
+	payload, err := json.Marshal(map[string][]string{"labels": {label}})
+	if err != nil {
+		return fmt.Errorf("marshal label: %w", err)
+	}
 	resp, err := c.do("POST",
 		fmt.Sprintf("/repos/%s/issues/%d/labels", c.repo, issueNumber),
 		string(payload))
@@ -161,7 +168,10 @@ func (c *Client) AddLabel(issueNumber int, label string) error {
 
 // CloseIssue closes an issue.
 func (c *Client) CloseIssue(issueNumber int) error {
-	payload, _ := json.Marshal(map[string]string{"state": "closed"})
+	payload, err := json.Marshal(map[string]string{"state": "closed"})
+	if err != nil {
+		return fmt.Errorf("marshal close: %w", err)
+	}
 	resp, err := c.do("PATCH",
 		fmt.Sprintf("/repos/%s/issues/%d", c.repo, issueNumber),
 		string(payload))
@@ -177,7 +187,7 @@ func (c *Client) CloseIssue(issueNumber int) error {
 
 // ListIssues returns open issues with the given label.
 func (c *Client) ListIssues(label string) ([]Issue, error) {
-	path := fmt.Sprintf("/repos/%s/issues?state=open&labels=%s&per_page=50", c.repo, label)
+	path := fmt.Sprintf("/repos/%s/issues?state=open&labels=%s&per_page=50", c.repo, url.QueryEscape(label))
 	resp, err := c.do("GET", path, "")
 	if err != nil {
 		return nil, fmt.Errorf("list issues: %w", err)
