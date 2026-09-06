@@ -246,6 +246,16 @@ func main() {
 					fmt.Println("❌ No AI provider configured. Run 'pivot init' first.")
 					return
 				}
+				// Per-run model overrides.
+				if m, _ := cmd.Flags().GetString("model"); m != "" {
+					cfg.Planner.Model = m
+				}
+				if prov, _ := cmd.Flags().GetString("provider"); prov != "" {
+					cfg.Planner.Provider = prov
+				}
+				if ep, _ := cmd.Flags().GetString("endpoint"); ep != "" {
+					cfg.Planner.Endpoint = ep
+				}
 				p := buildPlanner(cfg)
 				tasks, err = p.Plan(goal)
 				if err != nil {
@@ -972,9 +982,9 @@ func main() {
 			fmt.Printf("   Endpoint: %s\n", pick.endpoint)
 			fmt.Println()
 			fmt.Println("You're ready! Try:")
-			fmt.Println('  pivot run "list all Go files and count lines"')
-			fmt.Println('  pivot scaffold my-workflow  # generate a workflow YAML')
-			fmt.Println('  pivot models               # list all local models')
+			fmt.Println("  pivot run \"list all Go files and count lines\"")
+			fmt.Println("  pivot scaffold my-workflow  # generate a workflow YAML")
+			fmt.Println("  pivot models               # list all local models")
 		},
 	}
 
