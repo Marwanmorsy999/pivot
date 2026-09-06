@@ -178,9 +178,7 @@ func (r *DetectionResult) detectLocalServers() {
 			r.Providers["ollama"] = true
 			// Run ollama list to find available models.
 			if out, err := exec.Command("ollama", "list").Output(); err == nil {
-				for _, m := range parseOllamaList(string(out)) {
-					r.LocalModels = append(r.LocalModels, m)
-				}
+					r.LocalModels = append(r.LocalModels, parseOllamaList(string(out))...)
 			}
 		}
 	}
