@@ -957,7 +957,7 @@ func main() {
 			} else {
 				fmt.Printf("Enter number [1-%d] (Enter = 1): ", len(opts))
 				var input string
-				fmt.Scanln(&input)
+				_, _ = fmt.Scanln(&input)
 				input = strings.TrimSpace(input)
 				if input == "" {
 					selected = 0
