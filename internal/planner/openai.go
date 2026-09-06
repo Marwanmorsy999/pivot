@@ -36,9 +36,13 @@ func (p *OpenAPlanner) Plan(goal string) ([]Task, error) {
 		},
 		"max_tokens": 2048,
 	}
-	// json_object response_format is OpenAI-specific; Gemini's compatible endpoint rejects it.
-	if strings.Contains(endpoint, "openai.com") || strings.Contains(endpoint, "groq.com") {
-		body["response_format"] = map[string]string{"type": "json_object"}
+	// json_object response_format works on OpenAI, Groq, Mistral, and Together.
+	// Gemini and OpenRouter reject it for some models — exclude them.
+	for _, host := range []string{"openai.com", "groq.com", "mistral.ai", "together.xyz"} {
+		if strings.Contains(endpoint, host) {
+			body["response_format"] = map[string]string{"type": "json_object"}
+			break
+		}
 	}
 	jsonData, err := json.Marshal(body)
 	if err != nil {
