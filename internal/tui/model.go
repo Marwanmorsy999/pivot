@@ -146,7 +146,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
-		return m, tea.Batch(cmd, m.waitForEvent())
+		return m, cmd // waitForEvent is already running from Init or prior Update
 	case core.Event:
 		return m.handleEvent(msg)
 	case eventClosedMsg:
