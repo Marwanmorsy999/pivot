@@ -275,6 +275,16 @@ func main() {
 					return
 				}
 
+				// Per-run model/provider/endpoint overrides.
+				if m, _ := cmd.Flags().GetString("model"); m != "" {
+					cfg.Planner.Model = m
+				}
+				if prov, _ := cmd.Flags().GetString("provider"); prov != "" {
+					cfg.Planner.Provider = prov
+				}
+				if ep, _ := cmd.Flags().GetString("endpoint"); ep != "" {
+					cfg.Planner.Endpoint = ep
+				}
 				p := buildPlanner(cfg)
 				fmt.Println("🧠 Planning...")
 				tasks, err = p.Plan(goal)
