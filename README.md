@@ -1,10 +1,15 @@
-# ⚡ Pivot — Hybrid CLI Orchestrator
+<p align="center">
+  <img src="assets/banner.svg" alt="Pivot — Hybrid CLI Orchestrator" width="900"/>
+</p>
 
-> Turn any goal into a parallel, AI-powered task graph. One binary. Zero Python.
+<p align="center">
+  <a href="https://github.com/Marwanmorsy999/pivot/actions/workflows/ci.yml"><img src="https://github.com/Marwanmorsy999/pivot/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
+  <a href="https://goreportcard.com/report/github.com/Marwanmorsy999/pivot"><img src="https://goreportcard.com/badge/github.com/Marwanmorsy999/pivot" alt="Go Report Card"/></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"/></a>
+  <img src="https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go" alt="Go 1.23+"/>
+</p>
 
-[![CI](https://github.com/Marwanmorsy999/pivot/actions/workflows/ci.yml/badge.svg)](https://github.com/Marwanmorsy999/pivot/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/Marwanmorsy999/pivot)](https://goreportcard.com/report/github.com/Marwanmorsy999/pivot)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+> Turn any plain-English goal into a validated, parallel AI-agent + CLI task graph. One binary. Zero Python.
 
 ## What Is Pivot?
 
@@ -26,14 +31,14 @@ Pivot:
 ## Install
 
 ```bash
-# Requires Go 1.22+ and gcc (for SQLite)
+# Requires Go 1.23+ and gcc (for SQLite)
 git clone https://github.com/Marwanmorsy999/pivot
 cd pivot
 make install          # installs to $GOPATH/bin
 
 # Or run directly
 export ANTHROPIC_API_KEY=sk-ant-...
-make build && ./pivot init
+make build && ./pivot setup
 ```
 
 Pre-built binaries (Linux amd64, macOS amd64/arm64, Windows) are attached to
@@ -42,9 +47,8 @@ each [GitHub Release](https://github.com/Marwanmorsy999/pivot/releases).
 ## Quick Start
 
 ```bash
-# 1. Detect providers and initialise
-pivot detect
-pivot init
+# 1. Auto-detect providers and configure interactively
+pivot setup
 
 # 2. Run a goal (LLM plans it)
 pivot run "list all Go files and count lines of code"
@@ -67,13 +71,16 @@ pivot export sess_1234567890_abcd --out report.md
 
 | Command | Description |
 |---------|-------------|
-| `pivot detect` | Auto-detect AI providers and local tools |
+| `pivot setup` | Interactive wizard: detect providers, pick model, write config |
+| `pivot detect` | Auto-detect AI providers and local tools (non-interactive) |
 | `pivot init` | Initialise config + state DB |
+| `pivot models` | List all detected local models with sizes and usage commands |
 | `pivot run "goal"` | Plan and execute a goal |
-| `pivot run --file plan.yaml` | Load task graph from YAML (no LLM) |
+| `pivot run --file plan.yaml` | Load task graph from YAML (no LLM needed) |
 | `pivot run --issue N` | Fetch goal from GitHub issue #N |
 | `pivot run --dry-run` | Show task plan without executing |
 | `pivot run --parallel N` | Max concurrent tasks (default 4) |
+| `pivot run --model M --provider P` | Override model/provider for this run |
 | `pivot resume <id>` | Resume failed session from saved plan |
 | `pivot status` | List recent sessions with status icons |
 | `pivot export <id>` | Export session as Markdown report |
@@ -162,7 +169,14 @@ pivot run --issue 42 --github-repo owner/repo
 | OpenAI | `OPENAI_API_KEY` | gpt-4o-mini |
 | Groq | `GROQ_API_KEY` | llama-3.1-8b-instant |
 | Gemini | `GEMINI_API_KEY` | gemini-1.5-flash |
+| Mistral | `MISTRAL_API_KEY` | mistral-small-latest |
+| Together AI | `TOGETHER_API_KEY` | llama-3.1-8b-instruct |
+| OpenRouter | `OPENROUTER_API_KEY` | (your choice) |
 | Ollama | running on :11434 | llama3.2:3b (free) |
+| LM Studio | running on :1234 | (active model) |
+| Jan | running on :1337 | (active model) |
+| LocalAI | running on :8080 | (active model) |
+| GGUF files | `~/.cache`, `~/models`, etc. | (loaded via llamafile) |
 
 API keys are **never written to disk** — always read from environment variables.
 
@@ -170,26 +184,32 @@ API keys are **never written to disk** — always read from environment variable
 
 Per-task cost shown live in the TUI, stored in SQLite, included in exports.
 
-| Model | Input | Output |
-|-------|-------|--------|
-| claude-opus-4-5 | $15/M | $75/M |
-| claude-sonnet-4-5 | $3/M | $15/M |
-| gpt-4o | $2.50/M | $10/M |
-| gpt-4o-mini | $0.15/M | $0.60/M |
-| gemini-2.5-flash | $0.075/M | $0.30/M |
-| groq llama-3.1-8b | $0.05/M | $0.08/M |
-| ollama (local) | $0 | $0 |
+| Model | Input / M tokens | Output / M tokens |
+|-------|-----------------|-------------------|
+| claude-opus-4-5 | $15.00 | $75.00 |
+| claude-sonnet-4-5 | $3.00 | $15.00 |
+| claude-3-5-haiku | $0.80 | $4.00 |
+| gpt-4o | $2.50 | $10.00 |
+| gpt-4o-mini | $0.15 | $0.60 |
+| gemini-2.5-flash | $0.075 | $0.30 |
+| groq llama-3.1-8b | $0.05 | $0.08 |
+| mistral-small | $0.20 | $0.60 |
+| mistral-large | $2.00 | $6.00 |
+| together llama-3.1-8b | $0.18 | $0.18 |
+| ollama / gguf (local) | $0 | $0 |
 
-## Tool Allowlist (40+)
+## Tool Allowlist (50+)
 
-Every tool is validated before execution. Allowed executables:
+Every tool is validated against an allowlist before execution. Unknown executables are rejected immediately.
 
-**Unix:** `find grep awk sed cat echo wc sort uniq head tail xargs tar zip cut tr tee diff patch ls cp mv rm mkdir chmod touch stat env which date sleep`  
-**Shell:** `sh bash`  
-**Network/data:** `jq curl wget ssh rsync`  
-**Dev:** `git docker kubectl make python3 node go npm npx pip cargo rustc terraform helm`  
-**Cloud:** `aws gcloud az`  
-**AI agents:** `ollama claude-code gemini-cli`
+**Unix core:** `find grep awk sed cat echo wc sort uniq head tail xargs tar zip unzip cut tr tee diff patch ls cp mv rm mkdir chmod chown touch stat file env printenv which date sleep`  
+**Shell:** `sh bash zsh fish`  
+**Network / data:** `jq curl wget ssh rsync`  
+**Dev:** `git docker podman kubectl make cmake python3 python node go npm npx pnpm yarn pip pip3 cargo rustc terraform helm`  
+**Cloud CLIs:** `aws gcloud az gh`  
+**Data tools:** `rg fd bat delta sqlite3 psql mysql ffmpeg`  
+**AI / automation:** `ollama claude-code gemini-cli aider mistral uv`  
+**Package managers:** `pip3 cargo` (already listed above under Dev)
 
 ## Session Management
 
@@ -201,7 +221,7 @@ pivot export sess_abc123  # Markdown report: summary table + outputs + cost
 
 ## Configuration
 
-`~/.pivot/config.yaml` (created by `pivot init`, API keys never stored here):
+`~/.pivot/config.yaml` (written by `pivot setup` or `pivot init`, API keys never stored here):
 
 ```yaml
 planner:

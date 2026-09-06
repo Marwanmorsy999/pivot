@@ -46,4 +46,4 @@ Contact @Marwanmorsy999 to discuss becoming a maintainer.
 
 ---
 
-*Last updated: September 2025*
+*Last updated: September 2026*

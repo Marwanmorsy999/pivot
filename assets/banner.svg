@@ -1,67 +1,69 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="800" height="200" viewBox="0 0 800 200">
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="180" viewBox="0 0 900 180">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#0f0c29"/>
-      <stop offset="50%" style="stop-color:#302b63"/>
-      <stop offset="100%" style="stop-color:#24243e"/>
-    </linearGradient>
-    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#7D56F4"/>
-      <stop offset="100%" style="stop-color:#04B575"/>
-    </linearGradient>
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
-      <feMerge>
-        <feMergeNode in="coloredBlur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
+    <style>
+      @media (prefers-color-scheme: dark) {
+        .bg  { fill: #0d0b1e; }
+        .sub { fill: #888; }
+      }
+      @media (prefers-color-scheme: light) {
+        .bg  { fill: #f5f4ff; }
+        .sub { fill: #666; }
+      }
+    </style>
   </defs>
-  
+
   <!-- Background -->
-  <rect width="800" height="200" rx="12" fill="url(#bg)"/>
-  
-  <!-- Grid pattern -->
-  <g opacity="0.05">
-    <line x1="0" y1="40" x2="800" y2="40" stroke="#fff" stroke-width="0.5"/>
-    <line x1="0" y1="80" x2="800" y2="80" stroke="#fff" stroke-width="0.5"/>
-    <line x1="0" y1="120" x2="800" y2="120" stroke="#fff" stroke-width="0.5"/>
-    <line x1="0" y1="160" x2="800" y2="160" stroke="#fff" stroke-width="0.5"/>
-    <line x1="160" y1="0" x2="160" y2="200" stroke="#fff" stroke-width="0.5"/>
-    <line x1="320" y1="0" x2="320" y2="200" stroke="#fff" stroke-width="0.5"/>
-    <line x1="480" y1="0" x2="480" y2="200" stroke="#fff" stroke-width="0.5"/>
-    <line x1="640" y1="0" x2="640" y2="200" stroke="#fff" stroke-width="0.5"/>
+  <rect width="900" height="180" rx="14" fill="#0d0b1e" class="bg"/>
+
+  <!-- Subtle grid -->
+  <g opacity="0.04" stroke="#fff" stroke-width="0.5">
+    <line x1="0" y1="45"  x2="900" y2="45"/>
+    <line x1="0" y1="90"  x2="900" y2="90"/>
+    <line x1="0" y1="135" x2="900" y2="135"/>
+    <line x1="180" y1="0" x2="180" y2="180"/>
+    <line x1="360" y1="0" x2="360" y2="180"/>
+    <line x1="540" y1="0" x2="540" y2="180"/>
+    <line x1="720" y1="0" x2="720" y2="180"/>
   </g>
-  
-  <!-- Pivot symbol (compass/arrow) -->
-  <g transform="translate(100,100)" filter="url(#glow)">
-    <circle cx="0" cy="0" r="50" fill="none" stroke="url(#accent)" stroke-width="2" opacity="0.3"/>
-    <circle cx="0" cy="0" r="35" fill="none" stroke="url(#accent)" stroke-width="1.5" opacity="0.5"/>
-    <polygon points="0,-45 8,0 0,45 -8,0" fill="url(#accent)" opacity="0.8"/>
-    <polygon points="-45,0 0,8 45,0 0,-8" fill="#7D56F4" opacity="0.4"/>
-    <circle cx="0" cy="0" r="6" fill="#04B575"/>
+
+  <!-- Logo mark — mini DAG -->
+  <g transform="translate(52,90)">
+    <!-- nodes -->
+    <rect x="-28" y="-38" width="26" height="14" rx="4" fill="#7D56F4" opacity="0.95"/>
+    <rect x="2"   y="-38" width="26" height="14" rx="4" fill="#7D56F4" opacity="0.95"/>
+    <rect x="-13" y="12"  width="26" height="14" rx="4" fill="#04B575"/>
+    <!-- edges -->
+    <line x1="-15" y1="-24" x2="0"  y2="12" stroke="#7D56F4" stroke-width="1.2" opacity="0.55"/>
+    <line x1="15"  y1="-24" x2="0"  y2="12" stroke="#7D56F4" stroke-width="1.2" opacity="0.55"/>
+    <!-- dots -->
+    <circle cx="-20" cy="-31" r="2.5" fill="#fff"/>
+    <circle cx="9"   cy="-31" r="2.5" fill="#fff"/>
+    <circle cx="0"   cy="19"  r="2.5" fill="#fff"/>
+    <!-- outer ring -->
+    <circle cx="0" cy="-9" r="42" fill="none" stroke="#7D56F4" stroke-width="1" opacity="0.18"/>
   </g>
-  
-  <!-- Text -->
-  <g transform="translate(180,60)">
-    <text x="0" y="50" font-family="Segoe UI, Arial, sans-serif" font-size="56" font-weight="bold" fill="#fff">PIVOT</text>
-    <text x="0" y="80" font-family="Segoe UI, Arial, sans-serif" font-size="18" fill="#7D56F4">v2.1.0</text>
-    <text x="0" y="120" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#aaa">Hybrid CLI Orchestrator</text>
-    <text x="0" y="145" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#666">AI Agents + Traditional Tools</text>
-  </g>
-  
-  <!-- Status indicators -->
-  <g transform="translate(600,80)">
-    <rect x="0" y="0" width="160" height="28" rx="14" fill="#04B575" opacity="0.15"/>
-    <circle cx="14" cy="14" r="5" fill="#04B575"/>
-    <text x="26" y="19" font-family="Segoe UI, Arial, sans-serif" font-size="11" fill="#04B575">CI Passing</text>
-    
-    <rect x="0" y="40" width="160" height="28" rx="14" fill="#7D56F4" opacity="0.15"/>
-    <circle cx="14" cy="54" r="5" fill="#7D56F4"/>
-    <text x="26" y="59" font-family="Segoe UI, Arial, sans-serif" font-size="11" fill="#7D56F4">Multi-Provider</text>
-    
-    <rect x="0" y="80" width="160" height="28" rx="14" fill="#FFD700" opacity="0.15"/>
-    <circle cx="14" cy="94" r="5" fill="#FFD700"/>
-    <text x="26" y="99" font-family="Segoe UI, Arial, sans-serif" font-size="11" fill="#FFD700">Cost Tracking</text>
+
+  <!-- PIVOT wordmark -->
+  <text x="110" y="100" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="64" font-weight="700" letter-spacing="-1" fill="#fff">PIVOT</text>
+
+  <!-- Tagline -->
+  <text x="112" y="128" font-family="Segoe UI, system-ui, Arial, sans-serif" font-size="15" fill="#7D56F4" letter-spacing="0.5">Hybrid CLI Orchestrator</text>
+
+  <!-- Right side — three pill badges -->
+  <g transform="translate(620,54)">
+    <!-- CI passing -->
+    <rect x="0" y="0"  width="220" height="26" rx="13" fill="#04B575" opacity="0.12"/>
+    <circle cx="16" cy="13" r="5" fill="#04B575"/>
+    <text x="28" y="17" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#04B575">All checks passing</text>
+
+    <!-- Parallel DAG -->
+    <rect x="0" y="36" width="220" height="26" rx="13" fill="#7D56F4" opacity="0.12"/>
+    <circle cx="16" cy="49" r="5" fill="#7D56F4"/>
+    <text x="28" y="53" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#7D56F4">Parallel DAG execution</text>
+
+    <!-- Multi-provider -->
+    <rect x="0" y="72" width="220" height="26" rx="13" fill="#FFD700" opacity="0.12"/>
+    <circle cx="16" cy="85" r="5" fill="#FFD700"/>
+    <text x="28" y="89" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#FFD700">Multi-provider · Cost tracking</text>
   </g>
 </svg>

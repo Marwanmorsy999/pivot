@@ -1,34 +1,48 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#0f0c29"/>
-      <stop offset="100%" style="stop-color:#302b63"/>
-    </linearGradient>
-    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#7D56F4"/>
-      <stop offset="100%" style="stop-color:#04B575"/>
-    </linearGradient>
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
-      <feMerge>
-        <feMergeNode in="coloredBlur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
+    <style>
+      @media (prefers-color-scheme: dark) {
+        .bg { fill: #0f0c29; }
+        .ring { stroke: #7D56F4; }
+        .ring2 { stroke: #04B575; }
+        .bolt { fill: #7D56F4; }
+        .bolt2 { fill: #04B575; }
+        .node { fill: #fff; }
+        .edge { stroke: #7D56F4; }
+      }
+    </style>
   </defs>
-  
+
   <!-- Background -->
-  <rect width="128" height="128" rx="24" fill="url(#bg)"/>
-  
+  <rect width="128" height="128" rx="22" fill="#0f0c29" class="bg"/>
+
   <!-- Outer ring -->
-  <circle cx="64" cy="64" r="52" fill="none" stroke="url(#accent)" stroke-width="2" opacity="0.3"/>
-  <circle cx="64" cy="64" r="38" fill="none" stroke="url(#accent)" stroke-width="1.5" opacity="0.5"/>
-  
-  <!-- Compass/arrow shape -->
-  <g filter="url(#glow)">
-    <polygon points="64,8 72,64 64,120 56,64" fill="url(#accent)" opacity="0.9"/>
-    <polygon points="8,64 64,72 120,64 64,56" fill="#7D56F4" opacity="0.4"/>
-    <circle cx="64" cy="64" r="8" fill="#04B575"/>
-    <circle cx="64" cy="64" r="4" fill="#fff"/>
-  </g>
+  <circle cx="64" cy="64" r="50" fill="none" stroke="#7D56F4" stroke-width="1.5" opacity="0.25" class="ring"/>
+
+  <!-- DAG nodes: three tasks -->
+  <!-- Node A (top-left) -->
+  <rect x="14" y="30" width="36" height="20" rx="6" fill="#7D56F4" opacity="0.9" class="bolt"/>
+  <!-- Node B (top-right) -->
+  <rect x="78" y="30" width="36" height="20" rx="6" fill="#7D56F4" opacity="0.9" class="bolt"/>
+  <!-- Node C (bottom-center, completed = green) -->
+  <rect x="46" y="78" width="36" height="20" rx="6" fill="#04B575" class="bolt2"/>
+
+  <!-- Edges A→C and B→C -->
+  <line x1="32" y1="50" x2="56" y2="78" stroke="#7D56F4" stroke-width="1.5" opacity="0.6" class="edge"/>
+  <line x1="96" y1="50" x2="72" y2="78" stroke="#7D56F4" stroke-width="1.5" opacity="0.6" class="edge"/>
+
+  <!-- Arrowheads on C -->
+  <polygon points="56,78 51,69 61,72" fill="#7D56F4" opacity="0.6"/>
+  <polygon points="72,78 67,72 77,69" fill="#7D56F4" opacity="0.6"/>
+
+  <!-- Dot labels inside nodes -->
+  <circle cx="22" cy="40" r="3" fill="#fff" class="node"/>
+  <circle cx="86" cy="40" r="3" fill="#fff" class="node"/>
+  <circle cx="54" cy="88" r="3" fill="#fff" class="node"/>
+
+  <!-- Running indicator (pulsing ring on node C) -->
+  <circle cx="64" cy="88" r="14" fill="none" stroke="#04B575" stroke-width="1.5" opacity="0.4" class="ring2"/>
+
+  <!-- Bottom label -->
+  <text x="64" y="118" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="700" letter-spacing="2" fill="#7D56F4">PIVOT</text>
 </svg>

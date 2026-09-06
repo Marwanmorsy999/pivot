@@ -10,7 +10,7 @@ For bugs and feature requests, check existing [issues](https://github.com/Marwan
 
 ### Prerequisites
 
-- Go `1.21+` for the module baseline.
+- Go `1.23+` for the module baseline.
 - A working C compiler/toolchain for SQLite (`github.com/mattn/go-sqlite3`).
 - Git.
 
