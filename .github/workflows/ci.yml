@@ -136,7 +136,7 @@ jobs:
         run: sudo apt-get install -y gcc libsqlite3-dev
 
       - name: Run gosec
-        uses: securego/gosec@v2.22.0
+        uses: securego/gosec@v2.29.0
         env:
           CGO_ENABLED: "1"
         with:
